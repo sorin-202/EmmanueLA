@@ -1,0 +1,75 @@
+# EmmanueLA v2 — project files
+
+Open this root folder in Android Studio. UI is Jetpack Compose; XML resources supply manifest/theme/icons/permissions rather than screen layout files.
+
+```text
+EmmanueLA/
+  .github/workflows/android.yml
+  .gitignore
+  DEVICE_CHECKLIST.md
+  README.md
+  app/build.gradle.kts
+  app/proguard-rules.pro
+  app/src/main/AndroidManifest.xml
+  app/src/main/java/com/emmanuela/launcher/AlphabetIndex.kt
+  app/src/main/java/com/emmanuela/launcher/AppManagementUi.kt
+  app/src/main/java/com/emmanuela/launcher/AppMetadata.kt
+  app/src/main/java/com/emmanuela/launcher/AppPolicy.kt
+  app/src/main/java/com/emmanuela/launcher/AppSearchIndex.kt
+  app/src/main/java/com/emmanuela/launcher/AppUsage.kt
+  app/src/main/java/com/emmanuela/launcher/Apps.kt
+  app/src/main/java/com/emmanuela/launcher/BulkActions.kt
+  app/src/main/java/com/emmanuela/launcher/Configuration.kt
+  app/src/main/java/com/emmanuela/launcher/Editors.kt
+  app/src/main/java/com/emmanuela/launcher/FolderGrid.kt
+  app/src/main/java/com/emmanuela/launcher/FolderSecurity.kt
+  app/src/main/java/com/emmanuela/launcher/Folders.kt
+  app/src/main/java/com/emmanuela/launcher/GestureCoordinator.kt
+  app/src/main/java/com/emmanuela/launcher/HomeTapRouter.kt
+  app/src/main/java/com/emmanuela/launcher/HomeWidgets.kt
+  app/src/main/java/com/emmanuela/launcher/IndexedAppList.kt
+  app/src/main/java/com/emmanuela/launcher/LauncherUi.kt
+  app/src/main/java/com/emmanuela/launcher/LauncherViewModel.kt
+  app/src/main/java/com/emmanuela/launcher/MainActivity.kt
+  app/src/main/java/com/emmanuela/launcher/Navigation.kt
+  app/src/main/java/com/emmanuela/launcher/NavigationUi.kt
+  app/src/main/java/com/emmanuela/launcher/NotificationBadges.kt
+  app/src/main/java/com/emmanuela/launcher/NotificationFiltering.kt
+  app/src/main/java/com/emmanuela/launcher/Platform.kt
+  app/src/main/java/com/emmanuela/launcher/SettingsUi.kt
+  app/src/main/java/com/emmanuela/launcher/Theme.kt
+  app/src/main/java/com/emmanuela/launcher/UiPreferences.kt
+  app/src/main/java/com/emmanuela/launcher/V2Preferences.kt
+  app/src/main/java/com/emmanuela/launcher/V2SettingsUi.kt
+  app/src/main/java/com/emmanuela/launcher/VectorPack.kt
+  app/src/main/java/com/emmanuela/launcher/WallpaperCache.kt
+  app/src/main/java/com/emmanuela/launcher/WallpaperEditor.kt
+  app/src/main/java/com/emmanuela/launcher/WeatherRepository.kt
+  app/src/main/res/drawable/ic_launcher.xml
+  app/src/main/res/drawable/ic_notification.xml
+  app/src/main/res/values/strings.xml
+  app/src/main/res/values/styles.xml
+  app/src/main/res/xml/device_admin.xml
+  app/src/main/res/xml/file_paths.xml
+  app/src/test/java/com/emmanuela/launcher/AppMetadataTest.kt
+  app/src/test/java/com/emmanuela/launcher/AppPolicyTest.kt
+  app/src/test/java/com/emmanuela/launcher/ConfigurationTest.kt
+  app/src/test/java/com/emmanuela/launcher/FolderCodecTest.kt
+  app/src/test/java/com/emmanuela/launcher/NavigationTest.kt
+  app/src/test/java/com/emmanuela/launcher/ScreenTimeTest.kt
+  app/src/test/java/com/emmanuela/launcher/SearchIndexTest.kt
+  app/src/test/java/com/emmanuela/launcher/V2ConfigurationTest.kt
+  build-apk.bat
+  build-apk.sh
+  build.gradle.kts
+  docs/ARCHITECTURE.md
+  docs/IMPLEMENTATION_UPDATES.md
+  docs/PRODUCT_REQUIREMENTS.md
+  gradle/wrapper/gradle-wrapper.jar
+  gradle/wrapper/gradle-wrapper.properties
+  gradle.properties
+  gradlew
+  gradlew.bat
+  settings.gradle.kts
+  PROJECT_STRUCTURE.md
+```

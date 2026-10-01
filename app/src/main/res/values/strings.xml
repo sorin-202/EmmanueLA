@@ -1,0 +1,2 @@
+<resources><string name="lock_description">Allows EmmanueLA to lock your screen when you use a configured gesture. No data is read or erased. Your device may require its PIN after locking.</string>    <string name="app_name">EmmanueLA</string>
+</resources>

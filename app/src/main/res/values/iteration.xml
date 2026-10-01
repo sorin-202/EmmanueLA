@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="v25_0">Widget options</string>
+    <string name="v25_1">Show controls</string>
+    <string name="v25_2">Hide controls</string>
+    <string name="v25_3">Photo</string>
+    <string name="v25_4">Share the app</string>
+    <string name="v25_5">Manage apps</string>
+    <string name="v25_6">Manage private apps</string>
+    <string name="v25_7">No private apps</string>
+    <string name="v25_8">Arrange apps</string>
+    <string name="v25_9">Hold and drag to snap apps into place</string>
+    <string name="v25_10">Keep custom app order</string>
+    <string name="v25_11">Home uses its own text style</string>
+    <string name="v25_12">On</string>
+</resources>

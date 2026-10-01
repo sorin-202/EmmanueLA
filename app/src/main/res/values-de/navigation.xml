@@ -1,0 +1,29 @@
+<resources>
+    <string name="ui_0">EINSTELLUNGEN</string>
+    <string name="ui_1">Allgemein</string>
+    <string name="ui_2">Dein Bereich</string>
+    <string name="ui_3">System</string>
+    <string name="ui_4">Über</string>
+    <string name="ui_5">Startbildschirm</string>
+    <string name="ui_6">App-Liste</string>
+    <string name="ui_7">Ordner</string>
+    <string name="ui_8">Darstellung</string>
+    <string name="ui_9">Gesten</string>
+    <string name="ui_10">Apps</string>
+    <string name="ui_11">Bewusste Nutzung</string>
+    <string name="ui_12">Im Moment leben</string>
+    <string name="ui_13">Privater Bereich</string>
+    <string name="ui_14">App-Einstellungen</string>
+    <string name="ui_15">Aliasse und Tags</string>
+    <string name="ui_16">Ordnerzuordnung</string>
+    <string name="ui_17">Benachrichtigungen</string>
+    <string name="ui_18">Versteckte Apps</string>
+    <string name="ui_19">Gesperrte Apps</string>
+    <string name="ui_20">Private Apps</string>
+    <string name="ui_21">Sicherheit</string>
+    <string name="ui_22">Standard-Launcher</string>
+    <string name="ui_23">Sprache</string>
+    <string name="ui_24">Berechtigungen</string>
+    <string name="ui_25">Akkuoptimierung</string>
+    <string name="ui_26">Sichern und Wiederherstellen</string>
+</resources>

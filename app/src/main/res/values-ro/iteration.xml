@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="v25_0">Opțiuni widget</string>
+    <string name="v25_1">Arată controalele</string>
+    <string name="v25_2">Ascunde controalele</string>
+    <string name="v25_3">Fotografie</string>
+    <string name="v25_4">Distribuie aplicația</string>
+    <string name="v25_5">Gestionează aplicațiile</string>
+    <string name="v25_6">Gestionează aplicațiile private</string>
+    <string name="v25_7">Nu există aplicații private</string>
+    <string name="v25_8">Aranjează aplicațiile</string>
+    <string name="v25_9">Ține apăsat și trage pentru a fixa aplicațiile în grilă</string>
+    <string name="v25_10">Păstrează ordinea personalizată a aplicațiilor</string>
+    <string name="v25_11">Ecranul Acasă folosește propriul stil de text</string>
+    <string name="v25_12">Activat</string>
+</resources>

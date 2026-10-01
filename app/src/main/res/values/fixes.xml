@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="v24_0">Enable Home</string>
+    <string name="v24_1">Home text style</string>
+    <string name="v24_2">Use custom Home text style</string>
+    <string name="v24_3">Inherit</string>
+    <string name="v24_4">Background opacity</string>
+    <string name="v24_5">Rounded corners</string>
+    <string name="v24_6">Home alphabet replaces the App List page.</string>
+    <string name="v24_7">Wave movement</string>
+    <string name="v24_8">Contact search (@)</string>
+    <string name="v24_9">Search contacts with @</string>
+    <string name="v24_10">Contacts permission</string>
+    <string name="v24_11">Contacts</string>
+    <string name="v24_12">Phone contacts are included by default. Other apps appear only when they expose contact integrations to Android.</string>
+    <string name="v24_13">Search apps, #tag or @contact</string>
+    <string name="v24_14">Allow contacts access to search names with @.</string>
+    <string name="v24_15">Allow contacts</string>
+    <string name="v24_16">Open app permissions</string>
+    <string name="v24_17">Type a contact name after @</string>
+    <string name="v24_18">No contacts found</string>
+    <string name="v24_19">Digital Wellbeing destination</string>
+    <string name="v24_20">Use automatic destination</string>
+    <string name="v24_21">Search Android settings</string>
+    <string name="v24_22">Test shortcut</string>
+    <string name="v24_23">Weather website</string>
+    <string name="v24_24">Use website on tap</string>
+    <string name="v24_25">Wallpaper preview</string>
+    <string name="v24_26">This folder\'s size</string>
+    <string name="v24_27">Width fits within this folder\'s column. Other folders retain their own sizes.</string>
+    <string name="v24_28">Reset this folder\'s size</string>
+    <string name="v24_29">Minimal. Personal. Yours.</string>
+    <string name="v24_30">Flashlight / camera</string>
+    <string name="v24_31">Granted</string>
+    <string name="v24_32">Not granted</string>
+</resources>

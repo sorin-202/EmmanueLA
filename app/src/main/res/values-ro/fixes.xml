@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="v24_0">Activează pagina Acasă</string>
+    <string name="v24_1">Stilul textului de pe Acasă</string>
+    <string name="v24_2">Stil de text separat pentru Acasă</string>
+    <string name="v24_3">Moștenește</string>
+    <string name="v24_4">Opacitatea fundalului</string>
+    <string name="v24_5">Colțuri rotunjite</string>
+    <string name="v24_6">Alfabetul de pe Acasă înlocuiește pagina Lista de aplicații.</string>
+    <string name="v24_7">Amplitudinea undei</string>
+    <string name="v24_8">Căutare în contacte (@)</string>
+    <string name="v24_9">Caută contacte cu @</string>
+    <string name="v24_10">Permisiune pentru contacte</string>
+    <string name="v24_11">Contacte</string>
+    <string name="v24_12">Contactele telefonului sunt incluse implicit. Alte aplicații apar doar dacă oferă integrări de contacte către Android.</string>
+    <string name="v24_13">Caută aplicații, #tag sau @contact</string>
+    <string name="v24_14">Permite accesul la contacte pentru a căuta nume cu @.</string>
+    <string name="v24_15">Permite accesul la contacte</string>
+    <string name="v24_16">Deschide permisiunile aplicației</string>
+    <string name="v24_17">Scrie numele unui contact după @</string>
+    <string name="v24_18">Nu s-au găsit contacte</string>
+    <string name="v24_19">Destinația pentru Confort digital</string>
+    <string name="v24_20">Folosește destinația automată</string>
+    <string name="v24_21">Caută în setările Android</string>
+    <string name="v24_22">Testează scurtătura</string>
+    <string name="v24_23">Pagina web pentru vreme</string>
+    <string name="v24_24">Deschide pagina web la atingere</string>
+    <string name="v24_25">Previzualizare fundal</string>
+    <string name="v24_26">Dimensiunea acestui folder</string>
+    <string name="v24_27">Lățimea este limitată de coloana acestui folder. Celelalte foldere își păstrează dimensiunile.</string>
+    <string name="v24_28">Resetează dimensiunea acestui folder</string>
+    <string name="v24_29">Minimal. Personal. Al tău.</string>
+    <string name="v24_30">Lanternă / cameră</string>
+    <string name="v24_31">Permis</string>
+    <string name="v24_32">Nepermis</string>
+</resources>
