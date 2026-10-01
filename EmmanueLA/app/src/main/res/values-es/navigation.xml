@@ -1,0 +1,29 @@
+<resources>
+    <string name="ui_0">AJUSTES</string>
+    <string name="ui_1">General</string>
+    <string name="ui_2">Tu espacio</string>
+    <string name="ui_3">Sistema</string>
+    <string name="ui_4">Acerca de</string>
+    <string name="ui_5">Inicio</string>
+    <string name="ui_6">Lista de apps</string>
+    <string name="ui_7">Carpetas</string>
+    <string name="ui_8">Apariencia</string>
+    <string name="ui_9">Gestos</string>
+    <string name="ui_10">Apps</string>
+    <string name="ui_11">Uso consciente</string>
+    <string name="ui_12">Vive el momento</string>
+    <string name="ui_13">Espacio privado</string>
+    <string name="ui_14">Ajustes de apps</string>
+    <string name="ui_15">Alias y etiquetas</string>
+    <string name="ui_16">Asignar carpetas</string>
+    <string name="ui_17">Notificaciones</string>
+    <string name="ui_18">Apps ocultas</string>
+    <string name="ui_19">Apps bloqueadas</string>
+    <string name="ui_20">Apps privadas</string>
+    <string name="ui_21">Seguridad</string>
+    <string name="ui_22">Launcher predeterminado</string>
+    <string name="ui_23">Idioma</string>
+    <string name="ui_24">Permisos</string>
+    <string name="ui_25">Optimización de batería</string>
+    <string name="ui_26">Copia y restauración</string>
+</resources>

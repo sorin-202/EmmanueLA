@@ -1,0 +1,1345 @@
+# 1. Settings — pagina principală
+
+```text
+SETTINGS                                      ◇
+                                              Advanced
+
+General
+    System
+    About
+
+Your space
+    Home
+    App List
+    Folders
+    Appearance
+    Gestures
+    Apps
+    Mindful Use
+    Live the Moment
+    Private Space
+```
+
+### Aspect
+
+- `SETTINGS` mare, sus stânga.
+- Buton `◇` sus dreapta. 
+- `General` și `Your space` sunt titluri mai mari.
+- Meniurile sunt rânduri simple.
+- Fără descrieri lungi.
+- Fără toate submeniurile afișate simultan.
+- Tap pe un rând → pagină nouă.
+- Back → revine un nivel.
+
+Exact direcția pe care ai stabilit-o: pagina principală arată doar categoriile, iar opțiunile apar după tap. Pasted text
+
+---
+
+# 2. System
+
+## Standard
+
+```text
+SYSTEM
+
+Default launcher
+
+Language
+
+Permissions
+
+Battery optimization
+
+Backup & restore
+```
+
+### Language
+
+```text
+LANGUAGE
+
+Follow system language       ✓
+
+English
+Română
+Deutsch
+Français
+Español
+Italiano
+Polski
+...
+```
+
+### Aspect
+
+Rând simplu:
+
+```text
+Language                       Română   >
+```
+
+Nu carduri mari.
+
+---
+
+# 3. About
+
+```text
+ABOUT
+
+EmmanueLA
+Version 1.0
+
+Quick guide / FAQs
+
+GitHub
+
+Privacy
+
+Version information
+```
+
+### Aspect
+
+Sus:
+
+```text
+EmmanueLA
+Minimal. Personal. Yours.
+```
+
+Sub acesta, rândurile normale.
+
+---
+
+# 4. Home
+
+## Standard
+
+```text
+HOME
+
+Layout
+    Favorite apps
+    Alignment
+    Spacing
+
+Widgets
+    Manage widgets
+    Arrange widgets
+
+Bottom controls
+    Left action
+    Right action
+    Style
+
+System
+    Status bar
+```
+
+## Advanced
+
+Apar în plus:
+
+```text
+Layout
+    Text style
+
+Widgets
+    Widget style
+
+Bottom controls
+    Position
+    Size
+
+System
+    Edge-to-edge
+
+Alphabet
+    Show alphabet on Home
+    Style
+```
+
+### Aspect
+
+Pagina Home trebuie împărțită prin subtitluri discrete:
+
+```text
+Layout
+────────────────
+
+Favorite apps                    >
+Alignment                     Left
+Spacing                     Medium
+```
+
+Nu pune fiecare secțiune într-un card separat.
+
+---
+
+# 5. Manage Widgets
+
+```text
+WIDGETS
+
+Clock                         ON
+Date                          ON
+Weather                       ON
+Screen time                   OFF
+Battery                       OFF
+Location                      OFF
+```
+
+Tap pe widget:
+
+```text
+WEATHER
+
+Enabled                       ON
+
+Location                    Cluj >
+
+Appearance               Default >
+
+Tap action               Weather >
+```
+
+Pentru Screen Time:
+
+```text
+Tap action
+    Digital Wellbeing / Confort digital (optiunea poate fi aleasa din setarile telefonului in cazul in care nu vine default)
+```
+
+### Aspect
+
+Lista de widgets trebuie să fie una dintre cele mai simple pagini ale aplicației.
+
+Icon mic (minimalist dar sugestiv)+ nume + switch.
+
+---
+
+# 6. Arrange Widgets
+
+Nu este meniu clasic.
+
+Se deschide **direct în preview fullscreen**, dar aplicatiile favorite nu pot fi mutate.
+
+```text
+┌───────────────────────────────┐
+│                               │
+│             21:42             │
+│         Wednesday 30          │
+│                               │
+│              19°C             │
+│                               │
+│                               │
+│ Instagram                     │
+│ Spotify                       │
+│                               │
+│                         82%   │
+│                               │
+│                               │
+│ Reset                  Done   │
+└───────────────────────────────┘
+```
+
+Interacțiuni:
+
+```text
+Drag       → move
+Pinch      → resize
+Tap        → widget options
+```
+
+Tap pe widget:
+
+```text
+WEATHER
+
+Size
+Small   Medium   Large
+
+Alignment
+Left   Center   Right
+
+Remove widget
+```
+
+Fără coordonate absolute.
+---
+
+# 7. Bottom Controls
+
+## Standard
+
+```text
+BOTTOM CONTROLS
+
+Left action                 Apps >
+
+Right action                Apps > 
+
+Style
+Text       Icons
+
+Size
+Small   Medium   Large
+```
+
+Acțiunile pot include:
+
+```text
+Apps
+Folders
+Settings
+Search
+Home
+
+Flashlight
+Do Not Disturb
+Airplane mode
+Digital Wellbeing
+
+None
+```
+
+Pentru acțiunile Android care nu pot fi activate direct, deschizi pagina corespunzătoare de sistem.
+
+## Advanced
+
+```text
+BOTTOM CONTROLS
+
+Left action
+
+Right action
+
+Style
+
+Size
+
+Text weight
+Regular   Medium   Bold
+```
+
+Dacă `Size = Custom`:
+
+```text
+Width
+Height
+```
+
+### Aspect
+
+Sus poate exista un preview mic:
+
+```text
+┌───────────────────────────────┐
+│                               │
+│ Apps                  Settings│
+└───────────────────────────────┘
+```
+
+Schimbările se văd live.
+
+---
+
+# 8. App List
+
+## Standard
+
+```text
+APP LIST
+
+Layout
+    Alignment
+    App icons
+    Spacing
+
+Search
+    Position
+    Style
+    Open keyboard automatically
+    Auto-open single result
+
+Alphabet
+    Show alphabet
+```
+
+## Advanced
+
+```text
+APP LIST
+
+Layout
+    Alignment
+    App icons
+    Spacing
+    Text size
+
+Search
+    Position
+    Style
+    Open keyboard automatically
+    Auto-open single result
+    Auto-launch delay
+    Search aliases
+    Search tags
+    Search package names
+    Cursor style
+
+Alphabet
+    Show alphabet
+    Animation
+    Haptic feedback
+```
+
+### Aspect
+
+`Search style` trebuie selectat vizual:
+
+```text
+Search style
+
+[ Pill ]   [ Box ]
+
+[ Line ]   [ Minimal ]
+```
+
+Nu listă textuală lungă.
+
+---
+
+# 9. Cursor Style
+
+```text
+CURSOR
+
+Style
+│
+│  Normal
+█  Block
+_  Underline
+|  Thin
+▮  Thick
+
+Custom character
+    _
+
+Color
+    Accent
+
+Blink
+Normal   Slow   Off
+```
+
+### Aspect
+
+Fiecare stil are preview real:
+
+```text
+Search apps |
+```
+
+sau
+
+```text
+Search apps █
+```
+
+---
+
+# 10. Home Alphabet
+
+Această secțiune apare doar în Advanced.
+
+```text
+HOME ALPHABET
+
+Show alphabet on Home        OFF
+
+Style                         >
+
+Animation                     >
+
+Position
+Left   Right
+
+Haptic feedback               ON
+```
+
+Când este activ:
+
+```text
+♡
+#
+A
+B
+C
+D
+...
+Z
+```
+
+`♡` = Favorite Apps  
+`#` = Apps with tags
+
+Aplicațiile apar în zona Home în locul App List-ului separat, fara a elimina widgeturile sau a se suprapune cu ele.
+
+Folders rămâne pagină separată.
+
+---
+
+# 11. Folders
+
+## Standard
+
+```text
+FOLDERS
+
+Layout
+    Layout style
+    Show app icons
+    App spacing
+
+Appearance
+    Background fill
+
+Behavior
+    Close after app launch
+```
+
+## Advanced
+
+```text
+FOLDERS
+
+Layout
+    Layout style
+    Show app icons
+    App spacing
+    Sort apps
+
+Appearance
+    Background fill
+    Label size
+
+Behavior
+    Close after app launch
+    Folder animation
+
+Security
+    Locked folders
+```
+
+### Layout Style
+
+```text
+LAYOUT STYLE
+
+List
+[──────]
+[──────]
+[──────]
+
+Grid
+[■ ■ ■]
+[■ ■ ■]
+
+Freeform
+[■     ■]
+   [■]
+```
+
+`Canvas` nu mai apare separat, fiind inlocuit de un freedom magnetic.
+
+---
+
+# 12. Folder Editor
+
+Fiecare folder are propriul editor:
+
+```text
+GAMES
+
+Name
+
+Icon
+
+Color
+
+Apps
+    Call of Duty
+    Minecraft
+    Chess
+    + Add apps
+
+Layout
+Grid
+
+Lock folder                 OFF
+
+Delete folder
+```
+
+Color aparține folderului individual, nu meniului global Folders.
+
+---
+
+# 13. Appearance
+
+## Standard
+
+```text
+APPEARANCE
+
+Theme
+    System / Light / Dark
+
+Colors
+    Accent color
+
+Typography
+    Font
+    Text size
+    Weight
+    Italic
+
+Wallpaper
+    Choose wallpaper
+    Adjust wallpaper
+
+Motion
+    Animations
+```
+
+## Advanced
+
+```text
+APPEARANCE
+
+Theme
+    System / Light / Dark / Custom
+
+Colors
+    Accent color (permite adaugare cod hex)
+    Text color   (permite adaugare cod hex)
+
+Typography
+    Font
+    Custom font
+    Text size
+    Weight
+    Italic
+    Transparency
+
+Wallpaper
+    Choose wallpaper
+    Adjust wallpaper
+    Dim
+    Blur
+    Daily new wallpaper
+
+Motion
+    Animations
+    Animation speed
+    Reduce motion
+```
+
+---
+
+# 14. Adjust Wallpaper
+
+Fullscreen.
+
+```text
+┌───────────────────────────────┐
+│                               │
+│                               │
+│       WALLPAPER PREVIEW       │
+│                               │
+│                               │
+│                               │
+│                               │
+├───────────────────────────────┤
+│ Fit     Fill     Reset        │
+│                               │
+│ Cancel                 Save   │
+└───────────────────────────────┘
+```
+
+Gesturi:
+
+```text
+Drag        reposition
+Pinch       zoom
+```
+
+Advanced poate adăuga doar:
+
+```text
+Dim          ━━━━━●━━
+
+Blur         ━━●━━━━
+```
+
+Atât.
+
+---
+
+# 15. Daily New Wallpaper
+
+```text
+DAILY WALLPAPER
+
+Enabled                     ON
+
+Wallpaper album               >
+
+Change time
+08:00
+
+Order
+Random   Sequential
+```
+
+Nu mai multe controale.
+
+---
+
+# 16. Motion
+
+## Standard
+
+```text
+MOTION
+
+Animations
+Off   Standard   Fluid
+```
+
+## Advanced
+
+```text
+MOTION
+
+Animations
+Off   Standard   Fluid
+
+Speed
+Fast   Normal   Slow
+
+Reduce motion               OFF
+```
+
+### Aspect
+
+Preview mic cu o tranziție simplă între două pagini.
+
+---
+
+# 17. Gestures
+
+## Standard
+
+```text
+GESTURES
+
+Swipe up                     >
+Swipe down                   >
+Swipe left                   >
+Swipe right                  >
+
+Double tap                   >
+Hold                         >
+```
+
+## Advanced
+
+```text
+GESTURES
+
+Swipe up
+Swipe down
+Swipe left
+Swipe right
+
+Double tap
+Triple tap
+Hold
+
+Swipe sensitivity
+Low   Medium   High
+
+Haptic feedback              ON
+```
+
+### Aspect
+
+Sus:
+
+```text
+          ↑
+          │
+
+←       HOME       →
+
+          │
+          ↓
+```
+
+Dacă dai tap pe o direcție, setezi acțiunea.
+
+---
+
+# 18. Action Picker
+
+Folosit peste tot:
+
+```text
+CHOOSE ACTION
+
+Launcher
+    Home
+    App List
+    Folders
+    Search
+    Settings
+
+Apps
+    Open app...
+
+System
+    Flashlight
+    Do Not Disturb
+    Airplane mode
+    Digital Wellbeing
+    Notification panel
+
+Other
+    None
+```
+
+Acesta trebuie să fie același picker pentru gestures, bottom controls și widget tap actions.
+
+---
+
+# 19. Apps
+
+```text
+APPS
+
+App settings
+
+Aliases & tags
+
+Folder assignments
+
+Notifications
+```
+
+Simplu.
+
+---
+
+# 20. App Settings
+
+```text
+APP SETTINGS
+
+Search apps...
+
+Instagram
+Spotify
+YouTube
+WhatsApp
+...
+```
+
+Tap:
+
+```text
+INSTAGRAM
+
+Alias
+
+Tags
+
+Folders
+
+Hidden                       OFF
+Blocked                      OFF
+Private                      OFF
+```
+
+## Advanced
+
+Mai apar:
+
+```text
+Screen time
+
+Notification behavior
+
+Reset app settings
+```
+
+---
+
+# 21. Aliases & Tags
+
+```text
+ALIASES & TAGS
+
+Search...
+
+~ Instagram
+Spotify
+~ YouTube
+WhatsApp
+```
+
+`~` = are alias.
+
+Tap:
+
+```text
+INSTAGRAM
+
+Alias
+Insta
+
+Tags
+social
+photo
+friends
+
++ Add tag
+
+Folders
+Social                         ✓
+Favorites                      ✓
+Photography                    ○
+```
+
+---
+
+# 22. Folder Assignments
+
+```text
+FOLDER ASSIGNMENTS
+
+Search apps...
+
+Instagram
+Social, Favorites
+
+Spotify
+Music
+
+YouTube
+Entertainment
+```
+
+Tap pe app:
+
+```text
+SELECT FOLDERS
+
+Social                      ✓
+Favorites                   ✓
+Entertainment               ○
+Work                        ○
+```
+
+---
+
+# 23. Notifications
+
+## Standard
+
+```text
+NOTIFICATIONS
+
+Notification badges           ON
+
+Notification filter           OFF
+
+Digest                        OFF
+
+Android notification settings >
+```
+
+## Advanced
+
+Dacă Digest = ON:
+
+```text
+Digest interval
+
+15 min
+30 min
+60 min
+120 min
+```
+
+Plus:
+
+```text
+Per-app rules >
+```
+
+---
+
+# 24. Mindful Use
+
+Aceasta trebuie să arate mai mult ca un dashboard.
+
+```text
+MINDFUL USE
+
+Today
+3 h 42 min
+
+
+Daily goal
+4 h
+
+
+Most used
+
+Instagram                1 h 12 m
+YouTube                     54 m
+Chrome                      41 m
+
+
+Open Digital Wellbeing
+```
+
+## Advanced
+
+```text
+Daily goal                   4 h
+
+Warning at                  80%
+
+Gentle reminder              ON
+
+Every                       30 min
+
+Screen Time widget           ON (Afiseaza optiunea aleasa in tabul home, si poate sa o suprascrie)
+```
+
+Fără blocking aici. Widgetul de screentime isi schimba gradual culoarea in rosu aprins cand se apropie de limita de timp setata.
+
+---
+
+# 25. Live the Moment
+
+Pagina principală:
+
+```text
+LIVE THE MOMENT
+
+Groups
+
+Social Media
+Instagram, TikTok, X
+1 h/day
+
+Entertainment
+YouTube, Reddit
+90 min/day
+
+
++ Create group
+```
+
+Cardurile pot fi foarte simple, doar cu separator subțire, sau pot avea aspect de box list.
+
+---
+
+# 26. Live the Moment — Group
+
+## Standard
+
+```text
+SOCIAL MEDIA
+
+Apps
+Instagram
+TikTok
+X
+
+Pause before opening          ON
+10 seconds
+
+Daily limit                   ON
+60 minutes
+
+Schedule                      OFF
+
+Strict mode                   OFF
+```
+
+## Advanced
+
+```text
+SOCIAL MEDIA
+
+Apps                           >
+
+Pause before opening
+Enabled                       ON
+Delay                         10 sec
+Increase after repeated opens OFF
+
+Usage
+Daily limit                   60 min
+Session limit                 OFF
+Opens per day                 OFF
+
+Schedule
+Enabled                       ON
+Days                Mon Tue Wed...
+Start                         08:00
+End                           18:00
+
+Mindful prompt
+Enabled                       OFF
+
+Strict mode
+Enabled                       OFF
+Require authentication        ON
+```
+
+---
+
+# 27. Pause Before Opening
+
+Când utilizatorul încearcă să deschidă Instagram:
+
+```text
+┌───────────────────────────────┐
+│                               │
+│          Instagram            │
+│                               │
+│       Take a moment.          │
+│                               │
+│             7                 │
+│                               │
+│                               │
+│ Cancel                        │
+└───────────────────────────────┘
+```
+
+După countdown:
+
+```text
+Open Instagram
+```
+
+Design foarte curat.
+
+---
+
+# 28. Private Space
+
+```text
+PRIVATE SPACE
+
+Hidden apps
+
+Blocked apps
+
+Private apps
+
+Security
+```
+
+---
+
+# 29. Hidden Apps
+
+```text
+HIDDEN APPS
+
+Search...
+
+Instagram                  OFF
+Telegram                   ON
+Gallery                    OFF
+```
+
+Advanced:
+
+```text
+Hide from search              ON
+```
+
+---
+
+# 30. Blocked Apps
+
+```text
+BLOCKED APPS
+
+Search...
+
+TikTok                     ON
+Instagram                  OFF
+Reddit                     ON
+```
+
+Tap pe aplicație:
+
+```text
+TIKTOK
+
+Blocked                      ON
+```
+
+Atât.
+
+Reguli complexe → Live the Moment.
+
+---
+
+# 31. Private Apps
+
+```text
+PRIVATE APPS
+
+Search...
+
+Gallery                    ON
+WhatsApp                   OFF
+Bank                       ON
+```
+
+La deschidere:
+
+```text
+Authenticate to open Bank
+```
+
+biometric / PIN Android.
+
+---
+
+# 32. Private Space → Security
+
+## Standard
+
+```text
+SECURITY
+
+Authentication
+Biometric + device credential
+```
+
+## Advanced
+
+```text
+SECURITY
+
+Authentication               >
+
+Auto-lock
+Immediately
+After 30 seconds
+When screen turns off
+
+Hide private apps from search OFF
+```
+
+---
+
+# 33. Advanced Toggle
+
+Sus dreapta în fiecare pagină Settings:
+
+```text
+Home                                    ◇
+```
+
+OFF:
+
+```text
+◇
+```
+
+ON:
+
+```text
+◆
+```
+
+Tap:
+
+```text
+Advanced options enabled
+```
+
+Important:
+
+- nu deschide altă pagină;
+- nu resetează scroll-ul;
+- nu schimbă meniul;
+- doar apar controalele suplimentare;
+- starea rămâne memorată.
+
+---
+
+# 34. Reguli vizuale pentru toate meniurile
+
+Ca să fie coerentă toată aplicația (tine cont ca unele telefoane au notch, asa ca pastreaza o margine superioara care sa evite ascunderea textului de catre notch):
+
+```text
+Page title
+26–30sp
+
+Section title
+14–16sp
+medium/bold
+
+Row title
+16–18sp
+
+Secondary value
+14–16sp
+lower opacity
+```
+
+Structura:
+
+```text
+PAGE TITLE
+
+Section
+
+Setting                    Value >
+
+Setting                         ON
+
+Setting                    Value >
+```
+
+Evita:
+
+- card în jurul fiecărei setări;
+- umbre multe;
+- chenare inutile;
+- texte explicative lungi;
+- culori diferite pentru fiecare categorie.
+
+Folosește:
+
+- mult spațiu liber;
+- separatoare foarte subtile;
+- aceeași margine stânga peste tot;
+- aceeași înălțime pentru rânduri;
+- preview doar unde ajută efectiv.
+
+Acesta ar fi tree-ul frontend pe care l-aș considera suficient de simplu pentru utilizare zilnică, dar destul de puternic după activarea `Advanced`.
