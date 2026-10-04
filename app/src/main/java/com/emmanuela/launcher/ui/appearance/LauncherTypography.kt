@@ -26,7 +26,12 @@ fun launcherFont(name:String,stamp:String,inherited:FontFamily?=FontFamily.SansS
 }
 fun nativeStyledTypeface(base:Typeface,weight:FontWeight,italic:Boolean):Typeface=
     if(android.os.Build.VERSION.SDK_INT>=28)Typeface.create(base,weight.weight,italic)
-    else Typeface.create(base,(if(weight.weight>=600)Typeface.BOLD else Typeface.NORMAL) or (if(italic)Typeface.ITALIC else Typeface.NORMAL))
+    else Typeface.create(base, when {
+        weight.weight >= 600 && italic -> Typeface.BOLD_ITALIC
+        weight.weight >= 600 -> Typeface.BOLD
+        italic -> Typeface.ITALIC
+        else -> Typeface.NORMAL
+    })
 fun weightOf(value:String)=when(value){"Bold"->FontWeight.Bold;"Medium"->FontWeight.Medium;else->FontWeight.Normal}
 fun styledTypography(source:Typography,family:FontFamily,weight:FontWeight?,italic:Boolean,scale:Float):Typography {
     fun TextStyle.adjust()=copy(fontFamily=family,fontStyle=if(italic)FontStyle.Italic else FontStyle.Normal,

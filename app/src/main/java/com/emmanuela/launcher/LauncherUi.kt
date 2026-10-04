@@ -163,7 +163,7 @@ fun LauncherApp(model: LauncherViewModel, homeEpoch: Int, now: Long, battery: In
     val privateRequest by model.privateRequest.collectAsStateWithLifecycle()
     LaunchedEffect(privateRequest,apps,ready){val pkg=privateRequest;if(pkg!=null&&ready){val app=apps.firstOrNull{it.packageName==pkg};if(app!=null){model.privateRequest.value=null;secureLaunch(app)}}}
     val currentSecureShortcut by rememberUpdatedState<(LauncherViewModel.ProtectedShortcut)->Unit>({request->secureLaunch(request.app,request.intent)})
-    LaunchedEffect(model){model.isProtectedShortcuts.collect{currentSecureShortcut(it)}}
+    LaunchedEffect(model){model.protectedShortcuts.collect{currentSecureShortcut(it)}}
     LaunchedEffect(unlocked, data.policies) {
         if (!unlocked) {
             
@@ -330,4 +330,3 @@ fun LauncherApp(model: LauncherViewModel, homeEpoch: Int, now: Long, battery: In
     }
     BackHandler(pause!=null){model.cancelPause()}
 }
-

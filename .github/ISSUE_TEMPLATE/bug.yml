@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a reproducible EmmanueLA problem
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device, Android version and EmmanueLA version
+    validations:
+      required: true
+  - type: textarea
+    id: permissions
+    attributes:
+      label: Relevant permission states and settings
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted logs or screenshots
+      description: Never include contact details, messages, passwords or private URLs.

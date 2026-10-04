@@ -236,6 +236,7 @@ private val translatedLabels=mapOf(
 fun localized(value:String):String {
     val context=LocalContext.current
     val language=LocalLauncherLanguage.current
-    val resources=remember(context,language){if(language=="system")context.resources else context.createConfigurationContext(Configuration(context.resources.configuration).apply{setLocale(Locale.forLanguageTag(language))}).resources}
+    val configuration=androidx.compose.ui.platform.LocalConfiguration.current
+    val resources=remember(context,language,configuration){context.createConfigurationContext(Configuration(configuration).apply{if(language!="system")setLocale(Locale.forLanguageTag(language))}).resources}
     return translatedLabels[value]?.let{resources.getString(it)}?:value
 }

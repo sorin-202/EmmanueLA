@@ -7,6 +7,7 @@ import com.emmanuela.launcher.BuildConfig
 import com.emmanuela.launcher.ContextSafeOpen
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.AppPolicy
+import com.emmanuela.launcher.data.NotificationMode
 import com.emmanuela.launcher.data.ExperiencePreferences
 import com.emmanuela.launcher.data.Favorite
 import com.emmanuela.launcher.data.LaunchableApp
@@ -337,7 +338,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     if(android.os.Build.VERSION.SDK_INT>=33)SettingRow("Allow notification summaries"){notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)}
                     SectionLabel("Per-app rules")
                     LazyColumn(Modifier.fillMaxWidth().heightIn(min=120.dp,max=480.dp)){items(apps.distinctBy{it.packageName},key={it.packageName}){app->val mode=data.policies[app.packageName]?.notifications?:NotificationMode.NORMAL
-                        ChoiceRow(app.label,mode.name,listOf("NORMAL","MUTE","DIGEST")){value->scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(notifications=NotificationMode.valueOf(value))}}}
+                        ChoiceRow(app.label,mode.name,NotificationMode.entries.map{it.name}){value->scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(notifications=NotificationMode.valueOf(value))}}}
                     }}
                     if(advanced)Text(localized("Filtering happens after notification arrival. Android can alert before dismissal."),style=MaterialTheme.typography.bodySmall)
                 }

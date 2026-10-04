@@ -1,4 +1,5 @@
 package com.emmanuela.launcher.ui.folders
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.AppFolder
@@ -230,15 +231,16 @@ fun AppMetadataEditor(app: LaunchableApp, current: AppMetadata, data: LauncherDa
 
 @Composable
 fun FolderUnlockDialog(id: String, model: LauncherViewModel, dismiss: () -> Unit, success: () -> Unit) {
+    val state by model.data.collectAsStateWithLifecycle()
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val auth=com.emmanuela.launcher.platform.rememberDeviceAuthentication(model.data.value.settings.ui.experience.authentication,model::authenticationChanged)
+    val auth=com.emmanuela.launcher.platform.rememberDeviceAuthentication(state.settings.ui.experience.authentication,model::authenticationChanged)
     AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text(localized("Unlock folder")) }, text = {
         Column {
-            if(model.data.value.folders.find{it.id==id}?.biometricUnlock==true)TextButton(enabled=!busy,onClick={auth("Unlock folder"){if(model.unlockFolderWithDevice(id))success()}}){Text("Use biometrics / device credential")}
-            if(model.data.value.folders.find{it.id==id}?.passwordHash?.isNotEmpty()==true)OutlinedTextField(password, { if (it.length <= 128) password = it }, label = { Text(localized("Folder password")) }, singleLine = true,
+            if(state.folders.find{it.id==id}?.biometricUnlock==true)TextButton(enabled=!busy,onClick={auth("Unlock folder"){if(model.unlockFolderWithDevice(id))success()}}){Text("Use biometrics / device credential")}
+            if(state.folders.find{it.id==id}?.passwordHash?.isNotEmpty()==true)OutlinedTextField(password, { if (it.length <= 128) password = it }, label = { Text(localized("Folder password")) }, singleLine = true,
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), enabled = !busy)
             if (failure) Text(localized("Incorrect password, or retry delay active."), color = MaterialTheme.colorScheme.error)
         }

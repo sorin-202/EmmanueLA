@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 @Composable
@@ -35,8 +36,9 @@ fun MagneticFolderApps(folder:AppFolder,entries:List<LaunchableApp>,arranging:Bo
     var dragged by remember{mutableStateOf<LaunchableApp?>(null)}
     var origin by remember{mutableStateOf(Rect.Zero)}
     var delta by remember{mutableStateOf(Offset.Zero)}
-    val spacing=model.data.value.settings.ui.experience.folderSpacing
-    val snap=with(density){model.data.value.settings.ui.v2.folderSnap.dp.toPx()}
+    val state by model.data.collectAsStateWithLifecycle()
+    val spacing=state.settings.ui.experience.folderSpacing
+    val snap=with(density){state.settings.ui.v2.folderSnap.dp.toPx()}
     var optimisticOrder by remember(folder.id){mutableStateOf<List<String>?>(null)}
     val displayed=remember(entries,optimisticOrder){optimisticOrder?.let{order->val catalog=entries.associateBy{it.id};order.mapNotNull(catalog::get)}?:entries}
     val currentEntries by rememberUpdatedState(displayed)

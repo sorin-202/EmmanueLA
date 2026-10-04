@@ -53,7 +53,7 @@ fun HomeAlphabetArea(data:LauncherData,apps:List<LaunchableApp>,launch:(Launchab
     val haptic=com.emmanuela.launcher.platform.rememberLauncherHapticTick()
     val letters=remember{listOf("♡","#")+('A'..'Z').map{it.toString()}}
     val sections by produceState<Map<String,List<LaunchableApp>>>(emptyMap(),apps){value=withContext(Dispatchers.Default){apps.groupBy{AppNaming.folded(it.label.trim()).take(1).uppercase()}+("#" to apps.filter{it.tags.isNotEmpty()})}}
-    val selected=remember(apps,data.favorites,p.favoriteCount,section,sections){if(section=="♡")data.favorites.take(p.favoriteCount).mapNotNull{f->apps.find{it.id==f.id}}else sections[section].orEmpty()}
+    val selectedApps=remember(apps,data.favorites,p.favoriteCount,section,sections){if(section=="♡")data.favorites.take(p.favoriteCount).mapNotNull{f->apps.find{it.id==f.id}}else sections[section].orEmpty()}
     var height by remember{mutableIntStateOf(1)};var finger by remember{mutableFloatStateOf(-1f)}
     fun select(letter:String,initial:Boolean=false){val changed=section!=letter;section=letter;if((changed||initial)&&e.homeAlphabetHaptics)haptic()}
     LaunchedEffect(section){list.scrollToItem(0)}
@@ -67,7 +67,7 @@ fun HomeAlphabetArea(data:LauncherData,apps:List<LaunchableApp>,launch:(Launchab
         }}}
         if(e.homeAlphabetPosition=="Left")rail()
         LazyColumn(Modifier.weight(1f).fillMaxHeight().ownsVerticalScroll("home-app-list").graphicsLayer{alpha=selectionAlpha},state=list,verticalArrangement=Arrangement.Center,horizontalAlignment=when(p.alignment){"Left"->Alignment.Start;"Center"->Alignment.CenterHorizontally;else->Alignment.End}){
-            items(selected,key={it.id}){app->Text(badgeLabel(app),style=MaterialTheme.typography.headlineSmall,modifier=Modifier.homeClick(app.label,{launch(app)},{manage(app.id)}).padding(vertical=e.homeSpacing.dp))}}
+            items(selectedApps,key={it.id}){app->Text(badgeLabel(app),style=MaterialTheme.typography.headlineSmall,modifier=Modifier.homeClick(app.label,{launch(app)},{manage(app.id)}).padding(vertical=e.homeSpacing.dp))}}
         if(e.homeAlphabetPosition=="Right")rail()
     }
     if(effect=="Bubble")Box(Modifier.align(if(e.homeAlphabetPosition=="Right")Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal=42.dp).size(56.dp).graphicsLayer{scaleX=bubbleScale;scaleY=bubbleScale;alpha=bubbleScale}.background(MaterialTheme.colorScheme.onSurface,CircleShape),contentAlignment=Alignment.Center){Text(section,fontSize=28.sp,color=MaterialTheme.colorScheme.surface)}

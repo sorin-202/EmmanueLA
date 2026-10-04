@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EmmanueLA</string>
+    <string name="lock_description">Pozwala EmmanueLA zablokować ekran po użyciu skonfigurowanego gestu. Żadne dane nie są odczytywane ani usuwane. Po zablokowaniu urządzenie może wymagać kodu PIN.</string>
+</resources>

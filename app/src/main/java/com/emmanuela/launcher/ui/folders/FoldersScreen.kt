@@ -89,7 +89,8 @@ fun FoldersScreen(data: LauncherData, home: () -> Unit, shuffle: () -> Unit, ope
 @Composable
 fun FolderScreen(folder: AppFolder, apps: List<LaunchableApp>, launch: (LaunchableApp) -> Unit, back: () -> Unit, edit: () -> Unit, editApp: (String) -> Unit, showIcons: Boolean, model: LauncherViewModel) {
     var arranging by rememberSaveable(folder.id){mutableStateOf(false)}
-    val sort=model.data.value.settings.ui.experience.folderSort
+    val state by model.data.collectAsStateWithLifecycle()
+    val sort=state.settings.ui.experience.folderSort
     val entries=remember(folder,apps,sort){if(folder.manualOrder||sort=="Manual")folder.apps.mapNotNull{id->apps.find{it.id==id}}else apps.filter{it.id in folder.apps}}
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(horizontal=24.dp)){
         Header(folder.name,back){TextButton(onClick=edit){Text(localized("Edit"))}}
