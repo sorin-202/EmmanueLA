@@ -25,10 +25,10 @@ class V24RegressionTest {
             }
         }
     }
-    @Test fun homeAlphabetExcludesDrawerEvenInOlderInconsistentConfigurations(){
+    @Test fun homeAlphabetAndDrawerRemainIndependentlyAvailable(){
         val p=Preferences(ui=UiPreferences(appListEnabled=true,experience=ExperiencePreferences(homeAlphabet=true)))
-        assertFalse(LauncherSurface.APPS in PagePolicy.enabled(p))
-        assertEquals(LauncherSurface.FOLDERS,PagePolicy.resolve(LauncherSurface.APPS,p))
+        assertTrue(LauncherSurface.APPS in PagePolicy.enabled(p))
+        assertEquals(LauncherSurface.APPS,PagePolicy.resolve(LauncherSurface.APPS,p))
     }
     @Test fun packageAndActivitySearchAreIndependentOfLabelsAndAliases(){
         val app=LaunchableApp("com.acme.hidden/.MainActivity","Journal","com.acme.hidden","Notebook")

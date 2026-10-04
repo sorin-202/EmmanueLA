@@ -27,7 +27,7 @@ data class ExperiencePreferences(
     val appIcons: Boolean = false,
     val appTextScale: Float = 1f,
     val searchAliases: Boolean = true,
-    val searchPackages: Boolean = true,
+    val searchPackages: Boolean = false,
     val autoLaunch: Boolean = true,
     val autoLaunchDelay: Int = 0,
     val cursorStyle: String = "Normal",

@@ -4,7 +4,7 @@ package com.emmanuela.launcher.data
 class AppSearchIndex(apps: List<LaunchableApp>, hiddenPackages:Set<String> = emptySet(), hideFromSearch:Boolean=true) {
     private val catalog=AlphabetIndex.build(apps.filter{!hideFromSearch||it.packageName !in hiddenPackages})
     val all = AlphabetIndex.build(apps.filter{it.packageName !in hiddenPackages})
-    private val names = catalog.apps.map { listOf(it.label, it.originalLabel, it.packageName, it.id).map(AppNaming::folded) }
+    private val names = catalog.apps.map { listOf(it.label, it.originalLabel, it.packageName, it.id).map(SearchRanking::folded) }
     private val tagged = catalog.apps.indices.filter { catalog.apps[it].tags.isNotEmpty() }.toSet()
     private val inverted: Map<String, Set<Int>> = run {
         val result = mutableMapOf<String, MutableSet<Int>>()
@@ -21,7 +21,7 @@ class AppSearchIndex(apps: List<LaunchableApp>, hiddenPackages:Set<String> = emp
     }
     fun containsTag(tag:String)=tag in inverted
     fun suggestions(query: String) = prefixTags(AppNaming.folded(query.trim().substringAfterLast(' ').removePrefix("#"))).take(8)
-    fun search(query: String, tagSearch: Boolean = true, searchAliases:Boolean=true, searchPackages:Boolean=true): IndexedApps {
+    fun search(query: String, tagSearch: Boolean = true, searchAliases:Boolean=true, searchPackages:Boolean=false): IndexedApps {
         if (query.isBlank()) return all
         val tokens = AppNaming.folded(query.trim()).split(Regex("\\s+"))
         val filtered = if (tagSearch && AppSearch.isTagMode(query)) {
@@ -33,7 +33,22 @@ class AppSearchIndex(apps: List<LaunchableApp>, hiddenPackages:Set<String> = emp
                 matches = matches.intersect(candidates)
             }
             catalog.apps.filterIndexed { i, _ -> i in matches }
-        } else catalog.apps.filterIndexed { index, _ -> tokens.all { token -> (token in names[index][1]) || (searchAliases && token in names[index][0]) || (searchPackages && (token in names[index][2] || token in names[index][3])) } }
+        } else {
+            val text = SearchRanking.folded(tokens.joinToString(" "))
+            val ranked = catalog.apps.indices.mapNotNull { index ->
+                val labels = if (searchAliases) names[index].take(2) else listOf(names[index][1])
+                val rank = SearchRanking.score(text, labels)
+                    ?: if (searchPackages) SearchRanking.score(text, labels + names[index].drop(2))?.plus(4) else null
+                rank?.let { index to it }
+            }.sortedBy { it.second }.map { catalog.apps[it.first] }
+            // Keep relevance order; alphabetic sections are only navigation metadata.
+            val alphabet = AlphabetIndex.build(ranked)
+            val positions = ranked.mapIndexed { i, app -> app.id to i }.toMap()
+            return IndexedApps(ranked, alphabet.sections.map { section ->
+                val app = alphabet.apps[section.firstIndex]
+                AlphabetSection(section.label, positions.getValue(app.id))
+            }.sortedBy { it.firstIndex })
+        }
         return AlphabetIndex.build(filtered)
     }
 }

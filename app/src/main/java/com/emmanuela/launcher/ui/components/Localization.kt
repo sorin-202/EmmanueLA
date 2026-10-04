@@ -10,6 +10,7 @@ import java.util.Locale
 
 val LocalLauncherLanguage=staticCompositionLocalOf{"system"}
 private val translatedLabels=mapOf(
+    "Search the web" to R.string.search_web,
     "SETTINGS" to R.string.ui_0,
     "General" to R.string.ui_1,
     "Your space" to R.string.ui_2,
@@ -191,7 +192,7 @@ private val translatedLabels=mapOf(
     "Inherit" to R.string.v24_3,
     "Background opacity" to R.string.v24_4,
     "Rounded corners" to R.string.v24_5,
-    "Home alphabet replaces the App List page." to R.string.v24_6,
+    "Home alphabet and App List can be enabled independently." to R.string.v24_6,
     "Wave movement" to R.string.v24_7,
     "Contact search (@)" to R.string.v24_8,
     "Search contacts with @" to R.string.v24_9,

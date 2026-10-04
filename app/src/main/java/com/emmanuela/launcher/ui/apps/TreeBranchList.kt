@@ -20,11 +20,12 @@ sealed interface BranchRow { val key:String
     data class Folder(val folder:AppFolder,val apps:List<LaunchableApp>):BranchRow{override val key="folder:${folder.id}"}
     data class App(val app:LaunchableApp,val parent:String?):BranchRow{override val key="app:${app.id}"}
 }
-fun drawerBranches(apps:List<LaunchableApp>,folders:List<AppFolder>):List<BranchRow>{
+fun drawerBranches(apps:List<LaunchableApp>,folders:List<AppFolder>, ranked:Boolean=false):List<BranchRow>{
     val owner=mutableMapOf<String,String>();folders.forEach{f->f.apps.forEach{owner.putIfAbsent(it,f.id)}}
     val roots=mutableListOf<BranchRow>()
     folders.forEach{f->val matches=apps.filter{owner[it.id]==f.id};if(matches.isNotEmpty())roots+=BranchRow.Folder(f,matches)}
     apps.filter{it.id !in owner}.forEach{roots+=BranchRow.App(it,null)}
+    if(ranked){val positions=apps.mapIndexed{i,app->app.id to i}.toMap();return roots.sortedBy{row->when(row){is BranchRow.App->positions.getValue(row.app.id);is BranchRow.Folder->row.apps.minOf{positions.getValue(it.id)}}}}
     return roots.sortedBy{when(it){is BranchRow.Folder->it.folder.name.lowercase();is BranchRow.App->it.app.label.lowercase()}}
 }
 @Composable
@@ -35,7 +36,7 @@ fun TreeBranchList(apps:List<LaunchableApp>,query:String,model:LauncherViewModel
     var unlocking by remember{mutableStateOf<String?>(null)}
     var contextFolder by remember{mutableStateOf<AppFolder?>(null)}
     var pendingMenu by remember{mutableStateOf(false)}
-    val roots=remember(apps,data.folders){drawerBranches(apps,data.folders)}
+    val roots=remember(apps,data.folders,query){drawerBranches(apps,data.folders,query.isNotBlank())}
     val list=rememberLazyListState();val scrollScope=rememberCoroutineScope()
     var scrollJob by remember{mutableStateOf<kotlinx.coroutines.Job?>(null)}
     val positions=remember(roots,expanded,query,unlocked){buildMap<String,Int>{var index=0;roots.forEach{root->
@@ -56,7 +57,7 @@ fun TreeBranchList(apps:List<LaunchableApp>,query:String,model:LauncherViewModel
             if(open)root.apps.forEach{app->item(key="branch:${folder.id}:${app.id}"){BranchApp(app,true,icons,model,launch,manage)}}
         }
     }}}
-    if(data.settings.ui.alphabet&&roots.isNotEmpty())BranchAlphabetRail(positions,data.settings.ui.alphabetAnimation,data.settings.ui.experience){index->scrollJob?.cancel();scrollJob=scrollScope.launch{list.scrollToItem(index)}}
+    if(data.settings.ui.alphabet&&query.isBlank()&&roots.isNotEmpty())BranchAlphabetRail(positions,data.settings.ui.alphabetAnimation,data.settings.ui.experience){index->scrollJob?.cancel();scrollJob=scrollScope.launch{list.scrollToItem(index)}}
     }
     unlocking?.let{id->FolderUnlockDialog(id,model,{unlocking=null}){unlocking=null;if(pendingMenu)contextFolder=data.folders.find{it.id==id}else expanded=expanded+id}}
     contextFolder?.let{DrawerFolderEditor(it,data,model){contextFolder=null}}

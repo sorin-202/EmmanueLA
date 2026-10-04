@@ -5,7 +5,7 @@ import com.emmanuela.launcher.data.Preferences
 object PagePolicy {
     fun enabled(p:Preferences)=buildList {
         if(p.ui.experience.homeEnabled)add(LauncherSurface.HOME)
-        if(p.ui.appListEnabled && !p.ui.experience.homeAlphabet)add(LauncherSurface.APPS)
+        if(p.ui.appListEnabled)add(LauncherSurface.APPS)
         if(p.ui.v2.foldersEnabled)add(LauncherSurface.FOLDERS)
     }
     /** Choose an enabled drawer before falling back to Home or the blank screen. */

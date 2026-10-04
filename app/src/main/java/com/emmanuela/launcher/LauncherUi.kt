@@ -245,7 +245,7 @@ fun LauncherApp(model: LauncherViewModel, homeEpoch: Int, now: Long, battery: In
                             LauncherSurface.APPS -> AllApps(drawerIndex, loading, data.settings,
                                 settled && overlay.isEmpty() && editor == null && appEditor == null && appMenu == null && policyPackages.isEmpty() && folderUnlock == null && quickAddApp == null,
                                 model, {app -> secureLaunch(app)}, model::rememberTags, { navigate(LauncherSurface.HOME, -1) },
-                                { navigate(LauncherSurface.FOLDERS) }, { overlay = "settings" }, ::editApp, { overlay="hidden" })
+                                { navigate(LauncherSurface.FOLDERS) }, { overlay = "settings" }, ::editApp, { overlay="hidden" }, { openFolder(it) })
                             LauncherSurface.FOLDERS -> FoldersScreen(data, { navigate(LauncherSurface.HOME, -1) },
                                 { navigate(LauncherSurface.APPS) }, { openFolder(it) }, { editor = "new" }, model::placeFolder,{overlay="settings"},model::placeDenseFolder)
                         }

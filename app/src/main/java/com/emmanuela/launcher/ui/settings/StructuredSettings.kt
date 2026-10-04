@@ -223,7 +223,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     ChoiceRow("Text weight",if(u.bottomBarWeight in listOf("Normal","Light"))"Regular" else u.bottomBarWeight,listOf("Regular","Medium","Bold")){value->model.uiSettings{it.copy(bottomBarWeight=if(value=="Regular")"Normal" else value)}}
                 }
                 page=="app-settings" -> {
-                    SectionLabel("Layout");ToggleRow("Tree Branch folders",v.treeBranch){yes->model.v2Settings{it.copy(treeBranch=yes)}};ToggleRow("Enable App list",u.appListEnabled&&!e.homeAlphabet){yes->model.uiSettings{it.copy(appListEnabled=yes,experience=if(yes)it.experience.copy(homeAlphabet=false)else it.experience)}}
+                    SectionLabel("Layout");ToggleRow("Tree Branch folders",v.treeBranch){yes->model.v2Settings{it.copy(treeBranch=yes)}};ToggleRow("Enable App list",u.appListEnabled){yes->model.uiSettings{it.copy(appListEnabled=yes)}}
                     ChoiceRow("Alignment",e.appAlignment,listOf("Left","Center","Right")){value->model.experienceSettings{it.copy(appAlignment=value)}}
                     ToggleRow("Show app icons",e.appIcons){yes->model.experienceSettings{it.copy(appIcons=yes)}}
                     SliderRow("Spacing",e.appSpacing.toFloat(),0f..32f){n->model.experienceSettings{it.copy(appSpacing=n.toInt())}}
@@ -254,8 +254,8 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     CursorSearchField(query,{query=it},p,Modifier.fillMaxWidth(),"Preview cursor")
                 }
                 page=="home-alphabet" -> {
-                    ToggleRow("Show alphabet",e.homeAlphabet){yes->model.uiSettings{ui->ui.copy(appListEnabled=if(yes)false else ui.experience.drawerBeforeHomeAlphabet,experience=ui.experience.copy(homeAlphabet=yes,drawerBeforeHomeAlphabet=if(yes)ui.appListEnabled else ui.experience.drawerBeforeHomeAlphabet))}}
-                    Text(localized("Home alphabet replaces the App List page."),style=MaterialTheme.typography.bodySmall)
+                    ToggleRow("Show alphabet",e.homeAlphabet){yes->model.experienceSettings{it.copy(homeAlphabet=yes)}}
+                    Text(localized("Home alphabet and App List can be enabled independently."),style=MaterialTheme.typography.bodySmall)
                     ChoiceRow("Position",e.homeAlphabetPosition,listOf("Left","Right")){value->model.experienceSettings{it.copy(homeAlphabetPosition=value)}}
                     ChoiceRow("Style",e.homeAlphabetStyle,listOf("Minimal","Compact")){value->model.experienceSettings{it.copy(homeAlphabetStyle=value)}}
                     if(e.homeAlphabetAnimation=="Wave")SliderRow("Wave movement",e.homeWaveStrength,16f..80f){n->model.experienceSettings{it.copy(homeWaveStrength=n)}}

@@ -71,7 +71,7 @@ import kotlin.math.abs
 @OptIn(kotlinx.coroutines.FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Composable
 fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boolean, model:LauncherViewModel,
-                    launch: (LaunchableApp) -> Unit, rememberTags: (String,LaunchableApp) -> Unit, home: () -> Unit, folders: () -> Unit, settings: () -> Unit, editApp: (String) -> Unit, hidden: () -> Unit) {
+                    launch: (LaunchableApp) -> Unit, rememberTags: (String,LaunchableApp) -> Unit, home: () -> Unit, folders: () -> Unit, settings: () -> Unit, editApp: (String) -> Unit, hidden: () -> Unit, openFolder: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val contacts = remember(context) { com.emmanuela.launcher.platform.ContactSearchRepository(context.applicationContext) }
@@ -81,6 +81,14 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event -> if(event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) permissionRevision++ }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val data by model.data.collectAsStateWithLifecycle()
+    val webMode = query.trimStart().startsWith("/")
+    val folderResults = remember(query, data.folders, p.ui.tagSearch, webMode) {
+        if (query.isBlank() || webMode || query.trimStart().startsWith("@") || (p.ui.tagSearch && AppSearch.isTagMode(query))) emptyList()
+        else data.folders.mapNotNull { folder ->
+            com.emmanuela.launcher.data.SearchRanking.score(com.emmanuela.launcher.data.SearchRanking.folded(query.trim()), listOf(com.emmanuela.launcher.data.SearchRanking.folded(folder.name)))?.let { folder to it }
+        }.sortedWith(compareBy({ it.second }, { it.first.name }, { it.first.id })).map { it.first }
     }
     val contactMode = p.ui.experience.contactsSearch && query.trimStart().startsWith("@")
     val contactAllowed = remember(permissionRevision) { contacts.allowed() }
@@ -112,9 +120,9 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
     val results = searchSnapshot.second
     val suggestions = if(p.ui.tagSuggestions && p.ui.tagSearch && AppSearch.isTagMode(query)) p.ui.v2.recentTags.filter(index::containsTag).take(3) else emptyList()
     var autoOpenedQuery by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(query, resolvedQuery, results.apps, active, contactMode, p.ui.experience.autoLaunch, p.ui.experience.autoLaunchDelay,p.ui.v2.treeBranch) {
+    LaunchedEffect(query, resolvedQuery, results.apps, active, contactMode, webMode, folderResults, data.folders, p.ui.experience.autoLaunch, p.ui.experience.autoLaunchDelay,p.ui.v2.treeBranch) {
         val normalized = query.trim()
-        if (!contactMode && p.ui.experience.autoLaunch && active && normalized.isNotEmpty() && resolvedQuery.trim() == normalized && results.apps.size == 1 && (!p.ui.v2.treeBranch||model.data.value.folders.none{results.apps.single().id in it.apps}) && autoOpenedQuery != normalized) {
+        if (!webMode && folderResults.isEmpty() && !contactMode && p.ui.experience.autoLaunch && active && normalized.isNotEmpty() && resolvedQuery.trim() == normalized && results.apps.size == 1 && (!p.ui.v2.treeBranch||data.folders.none{results.apps.single().id in it.apps}) && autoOpenedQuery != normalized) {
             if(p.ui.experience.autoLaunchDelay>0)kotlinx.coroutines.delay(p.ui.experience.autoLaunchDelay.toLong())
             val app = results.apps.single()
             autoOpenedQuery = normalized
@@ -146,8 +154,22 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
         }
         if (p.ui.v2.searchEnabled && p.ui.searchPosition == "Top") field()
         if (loading && index.all.apps.isEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!contactMode && !loading && results.apps.isEmpty()) Text(localized("No apps found"), Modifier.padding(vertical = 24.dp))
-        if(contactMode) {
+        if (!webMode && !contactMode && !loading && results.apps.isEmpty() && folderResults.isEmpty()) Text(localized("No apps found"), Modifier.padding(vertical = 24.dp))
+        if (!webMode && !contactMode && folderResults.isNotEmpty()) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max=160.dp)) {
+                items(folderResults, key={ it.id }) { folder ->
+                    TextButton(onClick={ query=""; manager.clearFocus(); keyboard?.hide(); openFolder(folder.id) }) { Text("▦ ${folder.name}") }
+                }
+            }
+        }
+        if(webMode) {
+            val webQuery = query.trimStart().removePrefix("/").trim()
+            TextButton(enabled=webQuery.isNotEmpty(), onClick={
+                model.launchPlatform(Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, webQuery))
+                manager.clearFocus(); keyboard?.hide()
+            }) { Text(localized("Search the web") + if(webQuery.isEmpty()) "" else ": $webQuery") }
+            Spacer(Modifier.weight(1f))
+        } else if(contactMode) {
             if(!contactAllowed) {
                 Text(localized("Allow contacts access to search names with @."), Modifier.padding(vertical=12.dp))
                 TextButton(onClick={
@@ -167,7 +189,7 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
                 }
             }
         } else if(p.ui.v2.treeBranch)TreeBranchList(results.apps,query,model,p.ui.experience.appIcons,{app->rememberTags(query,app);query="";launch(app)},editApp,Modifier.weight(1f).fillMaxWidth())
-        else IndexedAppList(results.apps, Modifier.weight(1f).fillMaxWidth(), { app -> rememberTags(query,app);query="";launch(app) }, editApp, results, p.ui.alphabet, p.ui.alphabetAnimation, true, p.ui.experience, model)
+        else IndexedAppList(results.apps, Modifier.weight(1f).fillMaxWidth(), { app -> rememberTags(query,app);query="";launch(app) }, editApp, results, p.ui.alphabet && (query.isBlank() || (p.ui.tagSearch && AppSearch.isTagMode(query))), p.ui.alphabetAnimation, false, p.ui.experience, model)
         if (p.ui.v2.searchEnabled && p.ui.searchPosition == "Bottom") field()
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = hidden) { Text(localized("Hidden Apps")) }
@@ -175,4 +197,3 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
         }
     }
 }
-
