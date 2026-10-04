@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EmmanueLA</string>
+    <string name="lock_description">Permite que EmmanueLA bloquee la pantalla mediante un gesto configurado. No se leen ni eliminan datos.</string>
+</resources>

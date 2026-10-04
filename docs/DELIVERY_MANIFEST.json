@@ -1,0 +1,189 @@
+{
+  "version": "2.6.0-beta",
+  "base": "2.5.2",
+  "changes": [
+    {
+      "path": "README.md",
+      "status": "modified",
+      "sha256": "ae24764fd9f287020d6100a5dfff801c4f3bbf1a64c266513fdb9ca5d25c8907"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "status": "modified",
+      "sha256": "4ca3d8cea21ff0789cd6300b0b705b1b1a26c05dfe62301781b13d4b31afb937"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "status": "modified",
+      "sha256": "7fbdc88e267b8a8545e0eba49966c132990cc19f3113069d7bfcacce4b48e0be"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/LauncherUi.kt",
+      "status": "modified",
+      "sha256": "04dc80ef5bd81abb58ff171e75711c348680db391c033069ec71adf7b90b8ebe"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/LauncherViewModel.kt",
+      "status": "modified",
+      "sha256": "91403390e791917071ff93badb50d3f03c9f7e4f5807fd07c80d962a7dd919c7"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/MainActivity.kt",
+      "status": "modified",
+      "sha256": "a3241cccb4bebc2cd122c2c3d291c0689ed79155645494763029173aa095e1e8"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/data/FocusGroups.kt",
+      "status": "modified",
+      "sha256": "d63454ccdd91b989c8f490de9446ab863338ffb8eb40c4e74ef1fc512ab35607"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/data/FocusWindows.kt",
+      "status": "added",
+      "sha256": "ae9e6b281301f6555185658d7414662504c622e987294ed641b1197af401ebd6"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/data/FolderGridLayout.kt",
+      "status": "added",
+      "sha256": "c70007d2363ba0fba43b71e712ed89cfb76d1f94b5290c497897bd157e2b34c5"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/data/Folders.kt",
+      "status": "modified",
+      "sha256": "2b45bf5d6cd787f65a051b0abd7ea0352896307f0269db3ae4e2dc7b7e84efae"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/data/V2Preferences.kt",
+      "status": "modified",
+      "sha256": "36ccdde444a53b53c4baf75fcb14566cc356a7fdf4dde91e7a926e23d4a1eef8"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/platform/ContactSearch.kt",
+      "status": "modified",
+      "sha256": "c37f8c96d8ee1a4691c2b6492970d9c0e0e433db97e382d00d89da05e33be3c2"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/platform/FocusSessions.kt",
+      "status": "modified",
+      "sha256": "4185cf2577880314d4a8a8f139cd848f4fefe1603ba36f17575411b1e068b610"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/platform/NotificationFiltering.kt",
+      "status": "modified",
+      "sha256": "aed0bd0bf66be007eccd84d11657f00683a2a51547d48767b34c8164f96fcb59"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/platform/RuleEnforcementService.kt",
+      "status": "added",
+      "sha256": "1e59dac7c65b5d275a2e39fb8726423000f3d5fb96daa0dd948bcd61a8c20685"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/apps/AppsScreen.kt",
+      "status": "modified",
+      "sha256": "41933946f0e93ad5bd5ff1a3bc23c8599b6e0e46cae2b86e7983edb775a68ff3"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/apps/BranchAlphabetRail.kt",
+      "status": "added",
+      "sha256": "73602db85daa7902f58a3680a642580c0588ca76505d232cb4e0a6b56a50293f"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/apps/BulkActions.kt",
+      "status": "modified",
+      "sha256": "5ca6874d6c2baad3d263018497198b9cb9173efd80d992ba9b560b8740aa55f7"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/apps/TreeBranchList.kt",
+      "status": "added",
+      "sha256": "ba389eb653fdc72d39b04a38b02710e098adda15fcdf7ba133b9080f15c920fb"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/folders/DenseFolderCanvas.kt",
+      "status": "added",
+      "sha256": "99468d50f56051050c2a7300e3f120c5722e5f9cd4cafd52c0b8cd0e46f3f644"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/folders/Editors.kt",
+      "status": "modified",
+      "sha256": "ae53e0d00312fccf72b5789491369ecf2e858704b521dbe2f088482ca6ba0883"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/folders/FolderGrid.kt",
+      "status": "modified",
+      "sha256": "760316394be34357ed47e28e8cf9158ac65fa7393cf28fb0c66efd819e5333a6"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/folders/FolderMembershipPicker.kt",
+      "status": "modified",
+      "sha256": "2e3c485623effb8037b1825a4b260b647beef38ef15822cf738b79a21e08e2d9"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/folders/FoldersScreen.kt",
+      "status": "modified",
+      "sha256": "c423bb7fbbdc251c07123f42181853792c4cefd4374ca3e178231488b2c660c7"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/home/ClockFace.kt",
+      "status": "added",
+      "sha256": "3d98e66184db9d8be8a25c550c5aab6b14ff631b23a1c9238b8105359fb07029"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/home/HomeWidgets.kt",
+      "status": "modified",
+      "sha256": "bf19349ea400744b538e77ccdc006580a3221be7c78cb25398b6ab5e127d4b08"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/mindful/FocusUi.kt",
+      "status": "modified",
+      "sha256": "6322d91bf71d7479c5a74f724f7e4558b823e5c8d97fed1cab68d46758a4826a"
+    },
+    {
+      "path": "app/src/main/java/com/emmanuela/launcher/ui/settings/StructuredSettings.kt",
+      "status": "modified",
+      "sha256": "a3f4a6b560dd2c2e1079c5ceb5ea7fce693bc75cf5d8b0ea2a02529602826f59"
+    },
+    {
+      "path": "app/src/main/res/values/rule_enforcement.xml",
+      "status": "added",
+      "sha256": "19cd862033252e756d770d500264559e017a0940a77d4e421b48dfc58283575f"
+    },
+    {
+      "path": "app/src/main/res/xml/rule_enforcement.xml",
+      "status": "added",
+      "sha256": "ca32034959cd7f068547c2204f9bbc8e8659559a91c8556f4822560c991879a9"
+    },
+    {
+      "path": "app/src/test/java/com/emmanuela/launcher/V26RulesTest.kt",
+      "status": "added",
+      "sha256": "5162e782d1e7d9b24cd18ac97eb122dcfad251c54df93b0d63900d9fa2df9467"
+    },
+    {
+      "path": "docs/CHANGELOG.md",
+      "status": "modified",
+      "sha256": "77eb6ff232ecd234388efb6bfc73404fd58eb095458d45bab5b50d73cc383ec3"
+    },
+    {
+      "path": "docs/UI_STRUCTURE.md",
+      "status": "modified",
+      "sha256": "81753a273b997a080491fdc65b01154c942a8e155e78ed35e769ec79986462af"
+    },
+    {
+      "path": "docs/UPGRADE_V26.md",
+      "status": "added",
+      "sha256": "e121ce29db4d3d07f19f8ba8249d97e4535f12f2d50eeb5586960a39bf844e00"
+    },
+    {
+      "path": "docs/build_attempt_v26.log",
+      "status": "added",
+      "sha256": "c086c4d778d81d209db4d59652a8ea6818d75490d1b0d79b19b28f163db90530"
+    }
+  ],
+  "checks": {
+    "structural": "passed: 91 Kotlin files, XML, manifest components",
+    "gradle": "blocked before compilation: UnknownHostException services.gradle.org",
+    "jvm_tests": "8 new regression tests provided, not run",
+    "instrumentation": "not run",
+    "device_behavior": "not verified"
+  },
+  "manifest_note": "This metadata file is excluded from its own hash list."
+}

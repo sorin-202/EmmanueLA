@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EmmanueLA</string>
+    <string name="lock_description">Permet à EmmanueLA de verrouiller l’écran via un geste configuré. Aucune donnée n’est lue ni effacée.</string>
+</resources>

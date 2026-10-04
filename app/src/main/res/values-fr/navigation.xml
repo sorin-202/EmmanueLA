@@ -1,0 +1,29 @@
+<resources>
+    <string name="ui_0">PARAMÈTRES</string>
+    <string name="ui_1">Général</string>
+    <string name="ui_2">Votre espace</string>
+    <string name="ui_3">Système</string>
+    <string name="ui_4">À propos</string>
+    <string name="ui_5">Accueil</string>
+    <string name="ui_6">Applications</string>
+    <string name="ui_7">Dossiers</string>
+    <string name="ui_8">Apparence</string>
+    <string name="ui_9">Gestes</string>
+    <string name="ui_10">Apps</string>
+    <string name="ui_11">Usage conscient</string>
+    <string name="ui_12">Vivre le moment</string>
+    <string name="ui_13">Espace privé</string>
+    <string name="ui_14">Réglages des apps</string>
+    <string name="ui_15">Alias et tags</string>
+    <string name="ui_16">Affectation aux dossiers</string>
+    <string name="ui_17">Notifications</string>
+    <string name="ui_18">Apps masquées</string>
+    <string name="ui_19">Apps bloquées</string>
+    <string name="ui_20">Apps privées</string>
+    <string name="ui_21">Sécurité</string>
+    <string name="ui_22">Lanceur par défaut</string>
+    <string name="ui_23">Langue</string>
+    <string name="ui_24">Autorisations</string>
+    <string name="ui_25">Optimisation batterie</string>
+    <string name="ui_26">Sauvegarde et restauration</string>
+</resources>

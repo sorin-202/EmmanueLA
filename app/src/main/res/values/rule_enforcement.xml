@@ -1,0 +1,1 @@
+<resources><string name="rule_enforcement_description">Optional focus rules: detects foreground apps and reads the address field of supported browsers to enforce your app, website and keyword limits. No page content or URLs are stored. Enable only if you want rules outside the launcher.</string></resources>

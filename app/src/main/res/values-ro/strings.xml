@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EmmanueLA</string>
+    <string name="lock_description">Permite EmmanueLA să blocheze ecranul când folosești un gest configurat. Nu sunt citite sau șterse date. Dispozitivul poate solicita codul PIN după blocare.</string>
+</resources>
