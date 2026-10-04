@@ -17,7 +17,25 @@ object FocusWindows {
     fun matches(g:FocusGroup,url:String):Boolean{val actualHost=host(url)?:return false;return g.websites.any{site->val d=host(site);d!=null&&(actualHost==d||actualHost.endsWith(".$d"))}||g.keywords.any{url.contains(it,ignoreCase=true)}}
     fun nextBoundary(g:FocusGroup,now:ZonedDateTime):Long?{
         val windows=g.windows+if(g.schedule)listOf(FocusWindow(g.days,g.startMinute,g.endMinute,"Strict block"))else emptyList()
-        return windows.flatMap{w->(-1..7).flatMap{offset->val day=now.toLocalDate().plusDays(offset.toLong());if(day.dayOfWeek.value !in w.days)emptyList()else{val start=if(w.start==w.end)day.atStartOfDay(now.zone)else day.atTime(w.start/60,w.start%60).atZone(now.zone);val endDay=day.plusDays(if(w.end<=w.start)1 else 0);val end=if(w.start==w.end)endDay.atStartOfDay(now.zone)else endDay.atTime(w.end/60,w.end%60).atZone(now.zone);listOf(start,end)}}}.filter{it.isAfter(now)}.minOfOrNull{java.time.Duration.between(now,it).toMillis()}
+        if(windows.isEmpty())return null
+        val candidates=mutableListOf<java.time.Instant>()
+        fun add(local:java.time.LocalDateTime){
+            val offsets=now.zone.rules.getValidOffsets(local)
+            // Both copies of a repeated hour are real boundaries. Gaps also need
+            // the clock transition itself, because active() follows wall time.
+            if(offsets.isEmpty())candidates+=local.atZone(now.zone).toInstant()
+            else offsets.forEach{candidates+=local.toInstant(it)}
+        }
+        windows.forEach{w->(-1..7).forEach{offset->
+            val day=now.toLocalDate().plusDays(offset.toLong())
+            if(day.dayOfWeek.value in w.days){
+                add(day.atTime(if(w.start==w.end)0 else w.start/60,if(w.start==w.end)0 else w.start%60))
+                val endDay=day.plusDays(if(w.end<=w.start)1 else 0)
+                add(endDay.atTime(if(w.start==w.end)0 else w.end/60,if(w.start==w.end)0 else w.end%60))
+            }
+        }}
+        now.zone.rules.nextTransition(now.toInstant())?.instant?.takeIf{it.isBefore(now.plusDays(8).toInstant())}?.let(candidates::add)
+        return candidates.filter{it.isAfter(now.toInstant())}.minOfOrNull{java.time.Duration.between(now.toInstant(),it).toMillis()}
     }
     fun countKey(g:FocusGroup,pkg:String,day:String)="$day:${g.id}"+if(g.perApp)":$pkg"else ""
     fun reason(g:FocusGroup,now:ZonedDateTime,used:Long?,opens:Int,session:Long=0):String?=when{

@@ -44,7 +44,9 @@ class RuleEnforcementService:AccessibilityService(){
     private var admitted=false
     private var generation=0L
     private var admission:Job?=null
-    private val screenReceiver=object:BroadcastReceiver(){override fun onReceive(context:Context?,intent:Intent?){if(intent?.action==Intent.ACTION_SCREEN_OFF){generation++;check?.cancel();admission?.cancel();timer?.cancel();foreground="";admitted=false;removeOverlay()}}}
+    private var configurationJob:Job?=null
+    private var receiverRegistered=false
+    private val screenReceiver=object:BroadcastReceiver(){override fun onReceive(context:Context?,intent:Intent?){if(intent?.action==Intent.ACTION_SCREEN_OFF){generation++;check?.cancel();admission?.cancel();timer?.cancel();foreground="";admitted=false;removeOverlay()}else if(intent?.action in setOf(Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED)){timer?.cancel();evaluate(false)}}}
     private var sessionStarted=0L
     private val sessionBase=mutableMapOf<String,Long>()
     private var check:Job?=null
@@ -57,8 +59,9 @@ class RuleEnforcementService:AccessibilityService(){
     private val countedRules=mutableSetOf<String>()
     override fun onServiceConnected(){
         EnforcementBridge.connected=true
-        ContextCompat.registerReceiver(this,screenReceiver,IntentFilter(Intent.ACTION_SCREEN_OFF),ContextCompat.RECEIVER_NOT_EXPORTED)
-        scope.launch{ConfigurationRepository(applicationContext).data.collect{state=it;if(!state.settings.ui.v2.backgroundRules){generation++;check?.cancel();admission?.cancel();removeOverlay();timer?.cancel();admitted=false}else evaluate(false)}}
+        if(!receiverRegistered){ContextCompat.registerReceiver(this,screenReceiver,IntentFilter(Intent.ACTION_SCREEN_OFF).apply{addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED)},ContextCompat.RECEIVER_NOT_EXPORTED);receiverRegistered=true}
+        configurationJob?.cancel()
+        configurationJob=scope.launch{ConfigurationRepository(applicationContext).data.collect{state=it;if(!state.settings.ui.v2.backgroundRules){generation++;check?.cancel();admission?.cancel();removeOverlay();timer?.cancel();admitted=false}else evaluate(false)}}
     }
     override fun onAccessibilityEvent(event:AccessibilityEvent?){
         if(event==null||!state.settings.ui.v2.backgroundRules)return
@@ -104,7 +107,7 @@ class RuleEnforcementService:AccessibilityService(){
                     val effective=if(admitted)g.copy(maxOpens=0)else g
                     reason=reason?:FocusWindows.reason(effective,now,used,(opens-if(handoff)1 else 0).coerceAtLeast(0),(sessionBase[g.id]?:0L)+if(admitted)session else 0)
                 }
-                if(reason!=null){showBlock(reason!!,0,null);return@launch}
+                if(reason!=null){showBlock(reason!!,0,null);scheduleDeadline(pkg,groups,usage,session,blocked=true);return@launch}
                 val pause=if(!admitted&&!handoff)groups.filter{FocusWindows.limited(it,now)}.maxOfOrNull{FocusCodec.pauseDelay(it,(counts[FocusWindows.countKey(it,pkg,now.toLocalDate().toString())]as?Int)?:0)}?:0 else 0
                 if(pause>0){showBlock("Look around",pause){admit(pkg,groups,false)};return@launch}
                 if(!admitted)admit(pkg,groups,handoff)else scheduleDeadline(pkg,groups,usage,session)
@@ -124,20 +127,20 @@ class RuleEnforcementService:AccessibilityService(){
             evaluate(false)
         }
     }
-    private fun scheduleDeadline(pkg:String,groups:List<FocusGroup>,usage:Map<String,Long>?,session:Long){
+    private fun scheduleDeadline(pkg:String,groups:List<FocusGroup>,usage:Map<String,Long>?,session:Long,blocked:Boolean=false){
         timer?.cancel();val now=ZonedDateTime.now();val times=mutableListOf<Long>()
         groups.forEach{g->
             FocusWindows.nextBoundary(g,now)?.let(times::add)
-            if(FocusWindows.limited(g,now)){
+            if(!blocked&&FocusWindows.limited(g,now)){
                 if(g.sessionMinutes>0)times+=g.sessionMinutes*60_000L-session-(sessionBase[g.id]?:0L)
                 if(g.dailyMinutes>0&&usage!=null){val used=if(g.perApp)usage[pkg]?:0 else g.packages.sumOf{usage[it]?:0}+if(g.packages.isEmpty())usage[pkg]?:0 else 0;times+=g.dailyMinutes*60_000L-used}
             }
         }
         val p=state.policies[pkg]
-        p?.dailyLimitMinutes?.let{limit->if(usage!=null)times+=limit*60_000L-(usage[pkg]?:0)}
+        p?.dailyLimitMinutes?.let{limit->if(!blocked&&usage!=null)times+=limit*60_000L-(usage[pkg]?:0)}
         if(p?.scheduleEnabled==true){val w=FocusGroup(schedule=true,days=p.days,startMinute=p.startMinute,endMinute=p.endMinute);FocusWindows.nextBoundary(w,now)?.let(times::add)}
         times+=java.time.Duration.between(now,now.toLocalDate().plusDays(1).atStartOfDay(now.zone)).toMillis()
-        val next=times.minOrNull()?:return
+        val next=RuleDeadline.next(times)?:return
         timer=scope.launch{delay(next.coerceAtLeast(100));if(foreground==pkg)evaluate(false)}
     }
     private fun showBlock(reason:String,seconds:Int,onOpen:(()->Unit)?){
@@ -155,5 +158,5 @@ class RuleEnforcementService:AccessibilityService(){
     }
     private fun removeOverlay(){pauseJob?.cancel();overlay?.let{runCatching{getSystemService(WindowManager::class.java).removeView(it)}};overlay=null;shownReason=""}
     override fun onInterrupt(){timer?.cancel();removeOverlay()}
-    override fun onDestroy(){EnforcementBridge.connected=false;runCatching{unregisterReceiver(screenReceiver)};removeOverlay();scope.cancel();super.onDestroy()}
+    override fun onDestroy(){EnforcementBridge.connected=false;if(receiverRegistered){unregisterReceiver(screenReceiver);receiverRegistered=false};removeOverlay();scope.cancel();super.onDestroy()}
 }

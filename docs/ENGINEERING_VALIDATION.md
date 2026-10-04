@@ -17,3 +17,6 @@ Repair batch: testDebugUnitTest, lintDebug and assembleDebug PASSED (BUILD SUCCE
 
 Search/navigation batch: testDebugUnitTest PASSED 87/87; lintDebug PASSED zero errors; assembleDebug PASSED, BUILD SUCCESSFUL in 7m41s. First new accent regression failed and was corrected by search-only diacritic normalization. Added DataStore instrumentation test remains NOT EXECUTED. API35 emulator booted and baseline installed/rendered, but Android System UI ANR prevented reliable UI validation; retry with host graphics pending.
 
+
+Enforcement expiry/DST batch: clean, testDebugUnitTest (92 tests, zero failures/errors), lintDebug, assembleDebug and assembleDebugAndroidTest PASSED (6m1s, 81 tasks executed). Android API35 x86_64 emulator with WHPX/host graphics: 4 instrumentation tests PASSED in 6.799s (DataStore atomic persistence, launcher startup/recreation, native italic and medium weight). Original software-rendered emulator had System UI ANRs; host graphics restored usable operation. An intermediate incremental APK lacked generated Compose classes and crashed; clean rebuild restored all 12 LauncherUi singleton definitions and startup passes. Windows lint-cache file lock was cleared by gradlew --stop before clean. Use clean artifacts for final delivery.
+
