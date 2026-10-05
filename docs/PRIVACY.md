@@ -31,3 +31,5 @@ Weather requests send selected coordinates to api.open-meteo.com and typed locat
 - Focus session reminders: deferred WorkManager notifications; Android may delay them in Doze.
 
 No network VPN or embedded social-media client is added. A VPN cannot identify encrypted URL paths without invasive interception; app-specific accessibility heuristics or web wrappers would add privacy, maintenance and reliability costs.
+
+Notification rule extension: optional keyword matching reads title/text/big-text only for applicable opted-in rules, in memory. No message content is logged or saved. Notification access and connected-listener status are distinct. Per-app schedules and Strict Block integration reevaluate on rule/time changes and at boundaries; incoming notifications are evaluated at their arrival time. Temporary suppression dismisses clearable notifications for 30 minutes and is excluded from portable exports. Calls, alarms, ongoing, media and service notifications remain exempt. Configuration v9 reads v2-v8. See Android's NotificationListenerService lifecycle contract: https://developer.android.com/reference/android/service/notification/NotificationListenerService .

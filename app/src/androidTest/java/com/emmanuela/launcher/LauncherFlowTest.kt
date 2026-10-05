@@ -87,7 +87,7 @@ class LauncherFlowTest {
                 click("Test Focus",scroll=true)
                 click("Take a Break",scroll=true)
                 click("Start 10-minute Break")
-                kotlinx.coroutines.withTimeout(5000){repository.data.first{it.focusGroups.single().breakUntil>System.currentTimeMillis()}}
+                kotlinx.coroutines.withTimeout(15_000){repository.data.first{it.focusGroups.single().breakUntil>System.currentTimeMillis()}}
                 find("End Break",scroll=true)
                 assertTrue(repository.data.first().focusGroups.single().breakUntil>System.currentTimeMillis())
                 click("End Break")

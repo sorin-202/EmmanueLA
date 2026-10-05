@@ -16,7 +16,8 @@ data class AppPolicy(
     val days: Set<Int> = (1..7).toSet(),
     val notifications: NotificationMode = NotificationMode.NORMAL,
     val digestMinutes: Int = 30,
-    val badgesMuted: Boolean = false
+    val badgesMuted: Boolean = false,
+    val notificationRule:NotificationRule = NotificationRule()
 )
 
 object PolicyRules {
@@ -55,6 +56,7 @@ object PolicyRules {
 object PolicyCodec {
     fun encode(policies: Map<String, AppPolicy>) = JSONObject().apply {
         policies.forEach { (pkg, p) -> put(pkg, JSONObject().apply {
+            put("notificationRule",NotificationRules.encode(p.notificationRule))
             put("badgesMuted",p.badgesMuted); put("hidden", p.hidden); put("blocked", p.blocked); put("private", p.privateApp)
             put("limit", p.dailyLimitMinutes ?: JSONObject.NULL)
             put("scheduled", p.scheduleEnabled); put("start", p.startMinute); put("end", p.endMinute)
@@ -74,7 +76,7 @@ object PolicyCodec {
                 o.getInt("end").also { require(it in 0..1439) },
                 days.also { require(it.isNotEmpty() && it.all { d -> d in 1..7 }) },
                 NotificationMode.valueOf(o.getString("notifications")),
-                o.getInt("digestMinutes").also { require(it in listOf(15, 30, 60, 120)) }, o.optBoolean("badgesMuted"))
+                o.getInt("digestMinutes").also { require(it in listOf(15, 30, 60, 120)) }, o.optBoolean("badgesMuted"),NotificationRules.decode(o.optJSONObject("notificationRule")))
         }
     }
 }

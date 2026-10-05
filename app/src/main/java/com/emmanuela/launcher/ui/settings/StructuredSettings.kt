@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 
 object SettingsRoutes {
     fun parent(page:String)=when {
+        page.startsWith("notification-rule:")->"notification-filter"
         page.startsWith("folder-select:") -> "folder-assignments"
         page.startsWith("blocked-detail:") -> "blocked-apps"
         page.startsWith("app-detail:") -> page.substringAfter('|',"apps-hub")
@@ -117,7 +118,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
     val title=when {
         page.startsWith("widget-style:")->"Widget style"
         page.startsWith("widget:")->widgetName(page.substringAfter(':'))
-        page.startsWith("app-detail:")||page.startsWith("blocked-detail:")->selectedApp?.label?:"App"
+        page.startsWith("app-detail:")||page.startsWith("blocked-detail:")||page.startsWith("notification-rule:")->selectedApp?.label?:"App"
         page.startsWith("folder-select:")->"Select folders"
         page.startsWith("group:")->selectedGroup?.name?:"Create group"
         page=="mindful"->"Mindful Use"
@@ -329,7 +330,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                 page.startsWith("folder-select:") -> { if(selectedApp!=null)FolderAssignmentsContent(selectedApp,data,model) }
                 page.startsWith("blocked-detail:") -> { if(selectedApp!=null){val policy=data.policies[selectedApp.packageName]?:AppPolicy();ToggleRow("Blocked",policy.blocked){yes->scope.launch{model.changePolicies(setOf(selectedApp.packageName)){it.copy(blocked=yes)}}}} }
                 page=="notification-filter" -> {
-                    Text(if(context.notificationAccess())"Notification Access enabled"else "Enable Notification Access to apply filtering",style=MaterialTheme.typography.bodySmall)
+                    NotificationConnectionStatus()
                     ToggleRow("Launcher badges",v.showBadges){yes->model.v2Settings{it.copy(showBadges=yes)}}
                     ToggleRow("Notification filter",v.notificationFilter){yes->model.v2Settings{it.copy(notificationFilter=yes)}}
                     ToggleRow("Notification digest",e.digestEnabled){yes->model.experienceSettings{it.copy(digestEnabled=yes)}}
@@ -338,10 +339,11 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     if(android.os.Build.VERSION.SDK_INT>=33)SettingRow("Allow notification summaries"){notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)}
                     SectionLabel("Per-app rules")
                     LazyColumn(Modifier.fillMaxWidth().heightIn(min=120.dp,max=480.dp)){items(apps.distinctBy{it.packageName},key={it.packageName}){app->val mode=data.policies[app.packageName]?.notifications?:NotificationMode.NORMAL
-                        ChoiceRow(app.label,mode.name,NotificationMode.entries.map{it.name}){value->scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(notifications=NotificationMode.valueOf(value))}}}
+                        SettingRow(app.label,mode.name){navigate("notification-rule:${app.id}")}
                     }}
                     if(advanced)Text(localized("Filtering happens after notification arrival. Android can alert before dismissal."),style=MaterialTheme.typography.bodySmall)
                 }
+                page.startsWith("notification-rule:")->if(selectedApp!=null)NotificationRuleEditor(selectedApp,data,model,::open)
                 page=="mindful" -> {
                     Text(localized("Today"),style=MaterialTheme.typography.titleMedium);Text(time?.let{"${it/3_600_000}h ${it/60_000%60}m"}?:"Usage access needed",style=MaterialTheme.typography.displaySmall)
                     SettingRow("Daily goal","${u.screenTimeLimit} min"){}
@@ -381,7 +383,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     if(app!=null)AppDetailsContent(app,data,model,metadataOnly=page.substringAfter('|')=="metadata") else Text(localized("This app is unavailable."))
                 }
                 page in listOf("private-space","hidden","hidden-manager","blocked-apps","private-apps","private-manager","security") -> PrivateSpaceSettings(page,data,apps,model,navigate)
-                page=="privacy" -> Text(localized("Your configuration and usage rules remain on your device. There are no accounts, ads or analytics. Optional weather sends the selected coordinates to Open-Meteo. Notification Access reads package metadata and counts, never message content. Usage Access is optional and used locally. Backups contain configuration, not usage history. Private Space protects launcher entry points, not access from other Android surfaces."))
+                page=="privacy" -> Text(localized("Your configuration and usage rules remain on your device. There are no accounts, ads or analytics. Optional weather sends the selected coordinates to Open-Meteo. Notification Access uses package metadata and counts. Optional keyword rules read title and text only on this device; message content is never saved. Usage Access is optional and used locally. Backups contain configuration, not usage history. Private Space protects launcher entry points, not access from other Android surfaces."))
             }
         }}
     }

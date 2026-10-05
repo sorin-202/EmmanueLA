@@ -35,7 +35,7 @@ class FocusBreakTest {
     @Test fun configurationSurvivesRestartAndReadsOlderBackups() {
         val data=LauncherData(focusGroups=listOf(group.copy(breakStartedAt=started,breakUntil=started+300_000)))
         val encoded=ConfigurationCodec.encode(data)
-        assertEquals(8,JSONObject(encoded).getInt("version"))
+        assertEquals(9,JSONObject(encoded).getInt("version"))
         assertEquals(data,ConfigurationCodec.decode(encoded))
         val old=JSONObject(encoded).put("version",7)
         val oldGroup=old.getJSONArray("focusGroups").getJSONObject(0)
