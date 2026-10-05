@@ -29,11 +29,45 @@ class LauncherFlowTest {
         }
         throw AssertionError("Visible control not found: $label. Visible text: " + nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}.mapNotNull{it.text?.toString()}.joinToString(" | "))
     }
-    private fun click(label:String,scroll:Boolean=false){
-        var node:AccessibilityNodeInfo?=find(label,scroll)
+    private fun click(label:String,scroll:Boolean=false,match:((AccessibilityNodeInfo)->Boolean)?=null){
+        val matches=match ?: { it:AccessibilityNodeInfo ->
+            it.packageName?.toString()==instrumentation.targetContext.packageName &&
+                it.className?.toString()!="android.widget.EditText" &&
+                (it.text?.toString()==label||it.contentDescription?.toString()==label)
+        }
+        var node:AccessibilityNodeInfo?=find(label,scroll,match={candidate->
+            var control:AccessibilityNodeInfo?=candidate
+            while(control!=null&&!control.isClickable)control=control.parent
+            matches(candidate)&&control?.isEnabled==true
+        })
         while(node!=null&&!node.isClickable)node=node.parent
         assertTrue("Clickable control: $label",node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)==true)
         instrumentation.waitForIdleSync()
+    }
+    @Test fun typedIntentionGatesLaunchAndIsNotPersisted()=runBlocking {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false))),
+                focusGroups=listOf(FocusGroup(id="intent",name="Intent",packages=setOf("com.android.settings"),dailyMinutes=0,pause=true,pauseSeconds=0,requireIntention=true))))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                click("All Apps")
+                val search=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(search.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Settings")}))
+                click("Settings app",match={it.contentDescription?.toString()?.contains(", com.android.settings")==true})
+                find("Your intention")
+                scenario.onActivity { activity ->
+                    val model=androidx.lifecycle.ViewModelProvider(activity)[LauncherViewModel::class.java]
+                    model.confirmPause("")
+                    assertNotNull(model.pendingPause.value)
+                }
+                val intention=find("Intention field",match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(intention.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Check device settings")}))
+                click("Open app")
+                find("Android settings window",match={it.packageName?.toString()=="com.android.settings"})
+                assertFalse(ConfigurationCodec.encode(repository.data.first()).contains("Check device settings"))
+            }
+        }finally{repository.restore(original)}
     }
     @Test fun appListWebIntentAndControlledBreakWorkflowRender()=runBlocking {
         val repository=ConfigurationRepository(instrumentation.targetContext)

@@ -16,11 +16,14 @@ data class FocusGroup(
     val windows:List<FocusWindow> = emptyList(), val websites:Set<String> = emptySet(),
     val keywords:Set<String> = emptySet(), val browsers:Set<String> = emptySet(),
     val perApp:Boolean=false, val cooldownSeconds:Int=60,
-    val blockAlways:Boolean=false, val breakStartedAt:Long=0, val breakUntil:Long=0
+    val blockAlways:Boolean=false, val breakStartedAt:Long=0, val breakUntil:Long=0,
+    val graceMinutes:Int=0, val warningMinutes:Int=0, val limitAction:String="Block",
+    val requireIntention:Boolean=false
 )
-data class PendingPause(val app:LaunchableApp,val seconds:Int,val prompt:Boolean)
+data class PendingPause(val app:LaunchableApp,val seconds:Int,val prompt:Boolean,val requireIntention:Boolean=false)
 object FocusCodec {
     fun encode(groups:List<FocusGroup>)=JSONArray().apply { groups.forEach { g -> put(JSONObject().apply {
+        put("graceMinutes",g.graceMinutes);put("warningMinutes",g.warningMinutes);put("limitAction",g.limitAction);put("requireIntention",g.requireIntention)
         put("blockAlways",g.blockAlways);put("breakStartedAt",g.breakStartedAt);put("breakUntil",g.breakUntil)
         put("windows",FocusWindows.encode(g.windows));put("websites",JSONArray(g.websites.toList()));put("keywords",JSONArray(g.keywords.toList()));put("browsers",JSONArray(g.browsers.toList()));put("perApp",g.perApp);put("cooldownSeconds",g.cooldownSeconds)
         put("id",g.id);put("name",g.name);put("packages",JSONArray(g.packages.toList()))
@@ -41,7 +44,9 @@ object FocusCodec {
                 o.optBoolean("escalatingPause"),o.optInt("sessionMinutes",0).also{require(it in 0..240)},o.optBoolean("requireAuthentication",true),
                 FocusWindows.decode(o.optJSONArray("windows")?:JSONArray()),FocusWindows.strings(o,"websites"),FocusWindows.strings(o,"keywords"),FocusWindows.strings(o,"browsers"),
                 o.optBoolean("perApp"),o.optInt("cooldownSeconds",60).also{require(it in 0..3600)},
-                o.optBoolean("blockAlways"),o.optLong("breakStartedAt"),o.optLong("breakUntil")).also {
+                o.optBoolean("blockAlways"),o.optLong("breakStartedAt"),o.optLong("breakUntil"),
+                o.optInt("graceMinutes",0).also{require(it in 0..30)},o.optInt("warningMinutes",0).also{require(it in 0..30)},
+                o.optString("limitAction","Block").also{require(it in listOf("Block","Warn"))},o.optBoolean("requireIntention")).also {
                     require(it.breakStartedAt>=0 && it.breakUntil>=it.breakStartedAt && it.breakUntil-it.breakStartedAt<=24*60*60_000L)
                 }
         }.also{groups->require(groups.map{it.id}.distinct().size==groups.size)}

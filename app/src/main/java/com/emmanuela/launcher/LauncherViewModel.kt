@@ -356,9 +356,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var pendingPrivate = false
     private var pauseReadyAt=0L
     fun cancelPause() { pendingPlatformIntent=null;pendingPause.value=null;pendingPrivate=false;approvedFocus=null }
-    fun confirmPause(){
+    fun confirmPause(intention:String=""){
         if(android.os.SystemClock.elapsedRealtime()<pauseReadyAt)return
         val pending=pendingPause.value?:return
+        if(pending.requireIntention&&intention.isBlank())return
         pendingPause.value=null;approvedFocus=pending.app.packageName
         val authorized=pendingPrivate;pendingPrivate=false
         val intent=pendingPlatformIntent;pendingPlatformIntent=null
@@ -407,7 +408,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         if(groups.isNotEmpty()) {
             val now=ZonedDateTime.now()
             val usage=if(groups.any{it.dailyMinutes>0&&com.emmanuela.launcher.data.FocusWindows.limited(it,now)})getApplication<Application>().appUsageToday()else emptyMap()
-            if(usage==null&&groups.any{it.dailyMinutes>0&&com.emmanuela.launcher.data.FocusWindows.limited(it,now)}){blockedMessage.value="Enable Usage Access to apply this group's daily allowance.";return false}
+            if(usage==null&&groups.any{it.limitAction=="Block"&&it.dailyMinutes>0&&com.emmanuela.launcher.data.FocusWindows.limited(it,now)}){blockedMessage.value="Enable Usage Access to apply this group's daily allowance.";return false}
             val context=getApplication<Application>()
             val counts=kotlinx.coroutines.withContext(Dispatchers.IO){context.getSharedPreferences("focus_opens",android.content.Context.MODE_PRIVATE).all}
             val sessions=mutableMapOf<String,com.emmanuela.launcher.platform.GroupSession>()
@@ -419,17 +420,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 if(message!=null){blockedMessage.value=message;return false}
                 if(g.sessionMinutes>0&&com.emmanuela.launcher.data.FocusWindows.limited(g,now)){
                     val session=context.recentGroupSession(if(g.perApp)setOf(packageName)else g.packages,g.cooldownSeconds)
-                    if(session==null){blockedMessage.value="Enable Usage Access to apply session limits.";return false}
+                    if(session==null){if(g.limitAction=="Block"){blockedMessage.value="Enable Usage Access to apply session limits.";return false}else{if(!focusApproved)android.widget.Toast.makeText(context,"Enable Usage Access for session warnings",android.widget.Toast.LENGTH_LONG).show();return@forEach}}
                     sessions[g.id]=session
-                    if(session.milliseconds>=g.sessionMinutes*60_000L && System.currentTimeMillis()-session.lastActiveAt<g.cooldownSeconds*1000L){
+                    if(g.limitAction=="Block"&&session.milliseconds>=FocusWindows.sessionBudget(g) && System.currentTimeMillis()-session.lastActiveAt<g.cooldownSeconds*1000L){
                         blockedMessage.value="${g.name}: session limit reached. Take a ${g.cooldownSeconds}-second break before opening again.";return false
                     }
                 }
             }
+            if(!focusApproved)groups.firstNotNullOfOrNull{g->
+                val total=usage?.let{if(g.perApp)it[packageName]?:0L else g.packages.sumOf{pkg->it[pkg]?:0L}}
+                FocusWindows.warning(g,now,total,(counts[FocusWindows.countKey(g,packageName,now.toLocalDate().toString())] as? Int)?:0,sessions[g.id]?.milliseconds?:0)
+            }?.let{android.widget.Toast.makeText(context,it,android.widget.Toast.LENGTH_LONG).show()}
+            val requireIntention=groups.any{it.pause&&it.requireIntention&&FocusWindows.limited(it,now)}
             val seconds=groups.maxOfOrNull{g->if(com.emmanuela.launcher.data.FocusWindows.limited(g,now))FocusCodec.pauseDelay(g,(counts[com.emmanuela.launcher.data.FocusWindows.countKey(g,packageName,now.toLocalDate().toString())] as? Int)?:0)else 0}?:0
-            if(app!=null&&seconds>0&&!focusApproved){pendingPrivate=policy.privateApp;pauseReadyAt=android.os.SystemClock.elapsedRealtime()+seconds*1000L;pendingPause.value=PendingPause(app,seconds,groups.any{it.prompt});return false}
+            if(app!=null&&(seconds>0||requireIntention)&&!focusApproved){pendingPrivate=policy.privateApp;pauseReadyAt=android.os.SystemClock.elapsedRealtime()+seconds*1000L;pendingPause.value=PendingPause(app,seconds,groups.any{it.prompt},requireIntention);return false}
             approvedFocus=null
-            groups.filter{it.sessionMinutes>0&&FocusWindows.limited(it,now)}.forEach{g->context.scheduleSessionReminder(g.id,(g.sessionMinutes*60_000L-(sessions[g.id]?.milliseconds?:0L)).coerceAtLeast(1_000L),if(g.perApp)packageName else null)}
+            groups.filter{it.sessionMinutes>0&&FocusWindows.limited(it,now)}.forEach{g->context.scheduleSessionReminder(g.id,(FocusWindows.sessionBudget(g)-(sessions[g.id]?.milliseconds?:0L)).coerceAtLeast(1_000L),if(g.perApp)packageName else null)}
             kotlinx.coroutines.withContext(Dispatchers.IO){val prefs=context.getSharedPreferences("focus_opens",android.content.Context.MODE_PRIVATE)
                 val editor=prefs.edit();val prefix="${now.toLocalDate()}:"
                 prefs.all.keys.filterNot{it.startsWith(prefix)}.forEach{editor.remove(it)}

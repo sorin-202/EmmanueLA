@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import androidx.core.content.ContextCompat
+import androidx.core.widget.addTextChangedListener
 import android.graphics.Color
 import android.os.SystemClock
 import android.view.Gravity
@@ -57,11 +58,13 @@ class RuleEnforcementService:AccessibilityService(){
     private var currentUrl=""
     private var activeRules=emptySet<String>()
     private val countedRules=mutableSetOf<String>()
+    private val warnedRules=mutableSetOf<String>()
+    private var warningDay=""
     override fun onServiceConnected(){
         EnforcementBridge.connected=true
         if(!receiverRegistered){ContextCompat.registerReceiver(this,screenReceiver,IntentFilter(Intent.ACTION_SCREEN_OFF).apply{addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED)},ContextCompat.RECEIVER_NOT_EXPORTED);receiverRegistered=true}
         configurationJob?.cancel()
-        configurationJob=scope.launch{ConfigurationRepository(applicationContext).data.collect{state=it;if(!state.settings.ui.v2.backgroundRules){generation++;check?.cancel();admission?.cancel();removeOverlay();timer?.cancel();admitted=false}else evaluate(false)}}
+        configurationJob=scope.launch{ConfigurationRepository(applicationContext).data.collect{next->if(next.focusGroups!=state.focusGroups||next.policies!=state.policies){generation++;check?.cancel();admission?.cancel();timer?.cancel();removeOverlay();admitted=false;handoffPending=false;warnedRules.clear()};state=next;if(!state.settings.ui.v2.backgroundRules){generation++;check?.cancel();admission?.cancel();removeOverlay();timer?.cancel();admitted=false}else evaluate(false)}}
     }
     override fun onAccessibilityEvent(event:AccessibilityEvent?){
         if(event==null||!state.settings.ui.v2.backgroundRules)return
@@ -70,7 +73,7 @@ class RuleEnforcementService:AccessibilityService(){
             // System permission/keyguard windows must remain reachable.
             if(pkg==packageName&&overlay!=null)return
             if(pkg=="com.android.systemui"||pkg=="com.android.settings"||pkg=="com.google.android.permissioncontroller"||pkg=="com.android.permissioncontroller"){generation++;check?.cancel();admission?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();foreground="";admitted=false;return}
-            if(pkg!=foreground){generation++;admission?.cancel();check?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();sessionBase.clear();countedRules.clear();activeRules=emptySet();foreground=pkg;handoffPending=EnforcementBridge.consume(pkg);admitted=false;currentUrl="";sessionStarted=SystemClock.elapsedRealtime();evaluate(true)}
+            if(pkg!=foreground){generation++;admission?.cancel();check?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();sessionBase.clear();countedRules.clear();warnedRules.clear();activeRules=emptySet();foreground=pkg;handoffPending=EnforcementBridge.consume(pkg);admitted=false;currentUrl="";sessionStarted=SystemClock.elapsedRealtime();evaluate(true)}
         }
         if(pkg==foreground&&pkg in BrowserAdapters.ids&&(event.eventType==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED||event.eventType==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)){
             val root=rootInActiveWindow?:return
@@ -93,23 +96,37 @@ class RuleEnforcementService:AccessibilityService(){
                 if(ids!=activeRules){admitted=false;activeRules=ids;sessionBase.keys.retainAll(ids);sessionStarted=SystemClock.elapsedRealtime()}
                 val handoff=handoffPending
                 if(!handoff&&!admitted&&(policy.privateApp||protectedFolder)){
-                    showBlock("Confirm your identity in EmmanueLA",0){removeOverlay();startActivity(Intent(this@RuleEnforcementService,com.emmanuela.launcher.MainActivity::class.java).putExtra("authenticate_package",pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))};return@launch
+                    showBlock("Confirm your identity in EmmanueLA",0,onOpen={removeOverlay();startActivity(Intent(this@RuleEnforcementService,com.emmanuela.launcher.MainActivity::class.java).putExtra("authenticate_package",pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))});return@launch
                 }
                 val now=ZonedDateTime.now()
                 val usage=withContext(Dispatchers.IO){applicationContext.appUsageToday()}
                 val counts=withContext(Dispatchers.IO){getSharedPreferences("focus_opens",MODE_PRIVATE).all}
-                var reason=PolicyRules.reason(policy,now,usage?.get(pkg))
+                var reason=PolicyRules.reason(policy,now,usage,pkg)
                 val session=(SystemClock.elapsedRealtime()-sessionStarted).coerceAtLeast(0)
                 groups.forEach{g->
-                    if(g.sessionMinutes>0&&FocusWindows.limited(g,now)&&g.id !in sessionBase){val prior=applicationContext.recentGroupSession(if(g.perApp||g.packages.isEmpty())setOf(pkg)else g.packages,g.cooldownSeconds);if(prior==null){showBlock("Enable Usage Access for session limits",0,null);return@launch};sessionBase[g.id]=if(!prior.active&&System.currentTimeMillis()-prior.lastActiveAt>=g.cooldownSeconds*1000L)0L else prior.milliseconds}
                     val used=usage?.let{if(g.perApp)it[pkg]?:0L else g.packages.sumOf{p->it[p]?:0L}+if(g.packages.isEmpty())it[pkg]?:0L else 0L}
                     val opens=(counts[FocusWindows.countKey(g,pkg,now.toLocalDate().toString())]as?Int)?:0
                     val effective=if(admitted)g.copy(maxOpens=0)else g
-                    reason=reason?:FocusWindows.reason(effective,now,used,(opens-if(handoff)1 else 0).coerceAtLeast(0),(sessionBase[g.id]?:0L)+if(admitted)session else 0)
+                    val admissionOpens=(opens-if(handoff)1 else 0).coerceAtLeast(0)
+                    reason=reason?:FocusWindows.reason(effective,now,used,admissionOpens)
+                    if(reason!=null)return@forEach
+                    if(g.sessionMinutes>0&&FocusWindows.limited(g,now)&&g.id !in sessionBase){
+                        val prior=applicationContext.recentGroupSession(if(g.perApp||g.packages.isEmpty())setOf(pkg)else g.packages,g.cooldownSeconds)
+                        if(prior==null){
+                            if(g.limitAction=="Block")reason="Enable Usage Access for session limits"
+                            else warnOnce(g.id,"Enable Usage Access for session warnings",now)
+                            return@forEach
+                        }
+                        sessionBase[g.id]=if(!prior.active&&System.currentTimeMillis()-prior.lastActiveAt>=g.cooldownSeconds*1000L)0L else prior.milliseconds
+                    }
+                    val elapsed=(sessionBase[g.id]?:0L)+if(admitted)session else 0
+                    reason=FocusWindows.reason(effective,now,used,admissionOpens,elapsed)
+                    if(reason==null)FocusWindows.warning(g,now,used,opens,elapsed)?.let{warnOnce(g.id,it,now)}
                 }
                 if(reason!=null){showBlock(reason!!,0,null);scheduleDeadline(pkg,groups,usage,session,blocked=true);return@launch}
                 val pause=if(!admitted&&!handoff)groups.filter{FocusWindows.limited(it,now)}.maxOfOrNull{FocusCodec.pauseDelay(it,(counts[FocusWindows.countKey(it,pkg,now.toLocalDate().toString())]as?Int)?:0)}?:0 else 0
-                if(pause>0){showBlock("Look around",pause){admit(pkg,groups,false)};return@launch}
+                val intention=!admitted&&!handoff&&groups.any{it.pause&&it.requireIntention&&FocusWindows.limited(it,now)}
+                if(pause>0||intention){showBlock("Look around",pause,onOpen={admit(pkg,groups,false)},requireIntention=intention);return@launch}
                 if(!admitted)admit(pkg,groups,handoff)else scheduleDeadline(pkg,groups,usage,session)
             }catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){showBlock("Rules unavailable. Return Home and check Usage Access.",0,null)}
         }
@@ -132,8 +149,11 @@ class RuleEnforcementService:AccessibilityService(){
         groups.forEach{g->
             FocusWindows.nextBoundary(g,now)?.let(times::add)
             if(!blocked&&FocusWindows.limited(g,now)){
-                if(g.sessionMinutes>0)times+=g.sessionMinutes*60_000L-session-(sessionBase[g.id]?:0L)
-                if(g.dailyMinutes>0&&usage!=null){val used=if(g.perApp)usage[pkg]?:0 else g.packages.sumOf{usage[it]?:0}+if(g.packages.isEmpty())usage[pkg]?:0 else 0;times+=g.dailyMinutes*60_000L-used}
+                if(g.sessionMinutes>0){
+                    times+=FocusWindows.sessionBudget(g)-session-(sessionBase[g.id]?:0L)
+                    if(g.warningMinutes>0)times+=(g.sessionMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L-session-(sessionBase[g.id]?:0L)
+                }
+                if(g.dailyMinutes>0&&usage!=null){val used=if(g.perApp)usage[pkg]?:0 else g.packages.sumOf{usage[it]?:0}+if(g.packages.isEmpty())usage[pkg]?:0 else 0;times+=FocusWindows.dailyBudget(g)-used;if(g.warningMinutes>0)times+=(g.dailyMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L-used}
             }
         }
         val p=state.policies[pkg]
@@ -143,18 +163,30 @@ class RuleEnforcementService:AccessibilityService(){
         val next=RuleDeadline.next(times)?:return
         timer=scope.launch{delay(next.coerceAtLeast(100));if(foreground==pkg)evaluate(false)}
     }
-    private fun showBlock(reason:String,seconds:Int,onOpen:(()->Unit)?){
-        if(overlay!=null&&shownReason==reason)return
-        removeOverlay();shownReason=reason
+    private fun warnOnce(id:String,message:String,now:ZonedDateTime){
+        val day=now.toLocalDate().toString()
+        if(day!=warningDay){warningDay=day;warnedRules.clear()}
+        if(warnedRules.add("$id:$message"))android.widget.Toast.makeText(this,message,android.widget.Toast.LENGTH_LONG).show()
+    }
+    private fun showBlock(reason:String,seconds:Int,onOpen:(()->Unit)?,requireIntention:Boolean=false){
+        val key="$reason:$requireIntention"
+        if(overlay!=null&&shownReason==key)return
+        removeOverlay();shownReason=key
         val wm=getSystemService(WindowManager::class.java)
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(48,48,48,48);setBackgroundColor(Color.BLACK)}
         box.addView(TextView(this).apply{text=reason;setTextColor(Color.WHITE);textSize=28f;gravity=Gravity.CENTER})
-        val button=Button(this).apply{text=if(seconds>0)"$seconds"else "Blocked";isEnabled=seconds==0&&onOpen!=null;setOnClickListener{onOpen?.invoke()}}
+        var ready=seconds==0
+        val intention=if(requireIntention)android.widget.EditText(this).apply{
+            hint="Your intention (not saved)";setTextColor(Color.WHITE);setHintTextColor(Color.LTGRAY)
+            filters=arrayOf(android.text.InputFilter.LengthFilter(200));maxLines=3;box.addView(this)
+        }else null
+        val button=Button(this).apply{text=if(seconds>0)"$seconds"else if(onOpen!=null)"Open app"else "Blocked";isEnabled=ready&&onOpen!=null&&!requireIntention;setOnClickListener{onOpen?.invoke()}}
+        intention?.addTextChangedListener{button.isEnabled=ready&&onOpen!=null&&!it.isNullOrBlank()}
         if(onOpen!=null)box.addView(button)
         box.addView(Button(this).apply{text="Home";setOnClickListener{performGlobalAction(GLOBAL_ACTION_HOME);removeOverlay()}})
         val params=WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,android.graphics.PixelFormat.TRANSLUCENT)
         try{wm.addView(box,params);overlay=box}catch(_:Exception){performGlobalAction(GLOBAL_ACTION_HOME);return}
-        if(seconds>0)pauseJob=scope.launch{var remaining=seconds;while(remaining>0){delay(1000);remaining--;button.text=remaining.toString()};button.text="Open app";button.isEnabled=true}
+        if(seconds>0)pauseJob=scope.launch{var remaining=seconds;while(remaining>0){delay(1000);remaining--;button.text=remaining.toString()};button.text="Open app";ready=true;button.isEnabled=!requireIntention||!intention?.text.isNullOrBlank()}
     }
     private fun removeOverlay(){pauseJob?.cancel();overlay?.let{runCatching{getSystemService(WindowManager::class.java).removeView(it)}};overlay=null;shownReason=""}
     override fun onInterrupt(){timer?.cancel();removeOverlay()}

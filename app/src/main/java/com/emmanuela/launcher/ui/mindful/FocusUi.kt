@@ -63,11 +63,20 @@ fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:
     ToggleRow("Enabled",draft.pause){draft=draft.copy(pause=it)}
     if(draft.pause){
         SliderRow("Delay (seconds)",draft.pauseSeconds.toFloat(),0f..60f){draft=draft.copy(pauseSeconds=it.toInt())}
+        ToggleRow("Enter an intention",draft.requireIntention){draft=draft.copy(requireIntention=it)}
+        if(draft.requireIntention)Text("Your intention is used only for this launch and is not saved.",style=MaterialTheme.typography.bodySmall)
         if(advanced)ToggleRow("Increase after repeated opens",draft.escalatingPause){draft=draft.copy(escalatingPause=it)}
     }
     SectionLabel("Usage")
     ToggleRow("Daily limit",draft.dailyMinutes>0){draft=draft.copy(dailyMinutes=if(it)60 else 0)}
     if(draft.dailyMinutes>0)SliderRow("Daily limit (minutes)",draft.dailyMinutes.toFloat(),1f..240f){draft=draft.copy(dailyMinutes=it.toInt())}
+    ChoiceRow("When a limit is reached",draft.limitAction,listOf("Block","Warn")){draft=draft.copy(limitAction=it)}
+    Text("Block lasts until the daily reset or session cooldown. Warn allows continued use. Strict Block always takes priority.",style=MaterialTheme.typography.bodySmall)
+    if(advanced){
+        SliderRow("Warning before limit (minutes)",draft.warningMinutes.toFloat(),0f..30f){draft=draft.copy(warningMinutes=it.toInt())}
+        SliderRow("Grace period (minutes)",draft.graceMinutes.toFloat(),0f..30f){draft=draft.copy(graceMinutes=it.toInt())}
+        Text("Grace extends daily and session time allowances. Warnings appear at launch, and during use when background rule access is enabled.",style=MaterialTheme.typography.bodySmall)
+    }
     run {
         ChoiceRow("Track daily limit",if(draft.perApp)"Per app"else "Group",listOf("Per app","Group")){draft=draft.copy(perApp=it=="Per app")}
         ToggleRow("Session limit",draft.sessionMinutes>0){draft=draft.copy(sessionMinutes=if(it)15 else 0)}
@@ -136,11 +145,12 @@ fun FocusBreakControls(group:FocusGroup,data:LauncherData,model:LauncherViewMode
 @Composable
 fun TimeChoice(label:String,minute:Int,save:(Int)->Unit){var show by remember{mutableStateOf(false)};SettingRow(label,"%02d:%02d".format(minute/60,minute%60)){show=true};if(show){val picker=androidx.compose.material3.rememberTimePickerState(minute/60,minute%60,true);AlertDialog(onDismissRequest={show=false},title={Text(label)},text={androidx.compose.material3.TimeInput(picker)},confirmButton={TextButton(onClick={save(picker.hour*60+picker.minute);show=false}){Text(localized("Save"))}},dismissButton={TextButton(onClick={show=false}){Text(localized("Cancel"))}})}}
 @Composable
-fun PauseScreen(pending:PendingPause,model:LauncherViewModel){var remaining by remember(pending){mutableIntStateOf(pending.seconds)};LaunchedEffect(pending){while(remaining>0){delay(1000);remaining--}}
+fun PauseScreen(pending:PendingPause,model:LauncherViewModel){var remaining by remember(pending){mutableIntStateOf(pending.seconds)};var intention by remember(pending){mutableStateOf("")};LaunchedEffect(pending){while(remaining>0){delay(1000);remaining--}}
     Surface(Modifier.fillMaxSize()){Column(Modifier.fillMaxSize().systemBarsPadding().padding(32.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
         AppIcon(pending.app,model);Text(pending.app.label,Modifier.padding(top=24.dp),style=MaterialTheme.typography.headlineMedium);Text("Look around",Modifier.padding(top=16.dp),style=MaterialTheme.typography.titleLarge)
         if(pending.prompt)Text(localized("What would you like to do in this app?"),Modifier.padding(vertical=16.dp))
-        if(remaining>0)Text(remaining.toString(),fontSize=48.sp)else TextButton(onClick=model::confirmPause){Text(localized("Open app"))}
+        if(pending.requireIntention)OutlinedTextField(intention,{intention=it.take(200)},label={Text("Your intention")},modifier=Modifier.fillMaxWidth())
+        if(remaining>0)Text(remaining.toString(),fontSize=48.sp)else TextButton(enabled=!pending.requireIntention||intention.isNotBlank(),onClick={model.confirmPause(intention)}){Text(localized("Open app"))}
         TextButton(onClick=model::cancelPause){Text(localized("Cancel"))}
     }}
 }

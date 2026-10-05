@@ -76,7 +76,7 @@ class SessionReminderWorker(context:Context,params:WorkerParameters):CoroutineWo
         if(!com.emmanuela.launcher.data.FocusWindows.limited(group,java.time.ZonedDateTime.now()))return Result.success()
         val packages=if(group.perApp)inputData.getString("package")?.let{setOf(it)}?:return Result.success() else group.packages
         val session=context.recentGroupSession(packages,group.cooldownSeconds)?:return Result.success()
-        if(!session.active||session.milliseconds<group.sessionMinutes*60_000L)return Result.success()
+        if(!session.active||session.milliseconds<com.emmanuela.launcher.data.FocusWindows.sessionBudget(group))return Result.success()
         if(Build.VERSION.SDK_INT>=33&&ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return Result.success()
         val manager=context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("focus_sessions","Session reminders",NotificationManager.IMPORTANCE_DEFAULT))

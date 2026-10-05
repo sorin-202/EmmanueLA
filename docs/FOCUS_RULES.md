@@ -19,3 +19,9 @@ Rules reevaluate at schedule boundaries and midnight, including while a blocking
 ## Validation scope
 
 Domain tests cover overlap, overnight expiry, DST transitions, bounded Break imports, old configuration compatibility, clock rollback and expiry. Android tests cover persistence and startup. The Android workflow test passes Home → App List → explicit /query UI → Settings → Live the Moment → saved Break start/end. Physical-device enforcement and OEM behavior remain separate acceptance work.
+
+## Allowances and intentions
+
+A rule can Block or Warn when a daily/session/open limit is reached. Warn permits continued use; it never overrides Strict Block. Optional grace minutes extend daily and session time allowances, not open counts. Warning lead time and grace are advanced controls. Warnings appear at launch and during use with optional background rule access. Warning-only rules do not block an app when Usage Access is unavailable; they report the missing access.
+
+Enter an intention can require text before opening a selected app, even with a zero-second delay. EmmanueLA does not save the text. Launcher confirmation and the optional accessibility pause enforce the same choice. Per-session reminders use the same grace-adjusted allowance as launch and foreground checks.

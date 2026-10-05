@@ -46,13 +46,30 @@ object FocusWindows {
         return candidates.filter{it.isAfter(now.toInstant())}.minOfOrNull{java.time.Duration.between(now.toInstant(),it).toMillis()}
     }
     fun countKey(g:FocusGroup,pkg:String,day:String)="$day:${g.id}"+if(g.perApp)":$pkg"else ""
+    fun dailyBudget(g:FocusGroup)=(g.dailyMinutes+g.graceMinutes)*60_000L
+    fun sessionBudget(g:FocusGroup)=(g.sessionMinutes+g.graceMinutes)*60_000L
+    fun warning(g:FocusGroup,now:ZonedDateTime,used:Long?,opens:Int,session:Long=0):String? {
+        if(strict(g,now)||!limited(g,now))return null
+        if(g.limitAction=="Warn") {
+            if(g.dailyMinutes>0&&used==null)return "${g.name}: enable Usage Access for warnings"
+            if(g.dailyMinutes>0&&(used?:0)>=dailyBudget(g))return "${g.name}: daily limit reached"
+            if(g.maxOpens>0&&opens>=g.maxOpens)return "${g.name}: daily opens reached"
+            if(g.sessionMinutes>0&&session>=sessionBudget(g))return "${g.name}: session limit reached"
+        }
+        if(g.warningMinutes>0) {
+            if(g.dailyMinutes>0&&used!=null&&used>=(g.dailyMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L)return "${g.name}: daily limit approaching"
+            if(g.sessionMinutes>0&&session>=(g.sessionMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L)return "${g.name}: session limit approaching"
+        }
+        return null
+    }
     fun reason(g:FocusGroup,now:ZonedDateTime,used:Long?,opens:Int,session:Long=0):String?=when{
         strict(g,now)->"${g.name}: strict block"
         !limited(g,now)->null
+        g.limitAction=="Warn"->null
         g.dailyMinutes>0&&used==null->"Enable Usage Access for daily limits"
-        g.dailyMinutes>0&&(used?:0)>=g.dailyMinutes*60_000L->"${g.name}: daily limit reached"
+        g.dailyMinutes>0&&(used?:0)>=dailyBudget(g)->"${g.name}: daily limit reached"
         g.maxOpens>0&&opens>=g.maxOpens->"${g.name}: daily opens reached"
-        g.sessionMinutes>0&&session>=g.sessionMinutes*60_000L->"${g.name}: session limit reached"
+        g.sessionMinutes>0&&session>=sessionBudget(g)->"${g.name}: session limit reached"
         else->null
     }
 }

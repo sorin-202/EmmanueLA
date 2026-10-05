@@ -20,6 +20,9 @@ data class AppPolicy(
 )
 
 object PolicyRules {
+    /** A missing app row is zero usage; a missing snapshot means unavailable access. */
+    fun reason(policy:AppPolicy,now:ZonedDateTime,usage:Map<String,Long>?,packageName:String):String? =
+        reason(policy,now,usage?.getOrDefault(packageName,0L))
     fun scheduled(policy: AppPolicy, now: ZonedDateTime): Boolean {
         if (!policy.scheduleEnabled) return false
         val minute = now.hour * 60 + now.minute
