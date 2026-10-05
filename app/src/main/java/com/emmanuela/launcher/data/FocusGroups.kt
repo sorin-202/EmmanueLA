@@ -15,11 +15,13 @@ data class FocusGroup(
     val sessionMinutes:Int=0, val requireAuthentication:Boolean=true,
     val windows:List<FocusWindow> = emptyList(), val websites:Set<String> = emptySet(),
     val keywords:Set<String> = emptySet(), val browsers:Set<String> = emptySet(),
-    val perApp:Boolean=false, val cooldownSeconds:Int=60
+    val perApp:Boolean=false, val cooldownSeconds:Int=60,
+    val blockAlways:Boolean=false, val breakStartedAt:Long=0, val breakUntil:Long=0
 )
 data class PendingPause(val app:LaunchableApp,val seconds:Int,val prompt:Boolean)
 object FocusCodec {
     fun encode(groups:List<FocusGroup>)=JSONArray().apply { groups.forEach { g -> put(JSONObject().apply {
+        put("blockAlways",g.blockAlways);put("breakStartedAt",g.breakStartedAt);put("breakUntil",g.breakUntil)
         put("windows",FocusWindows.encode(g.windows));put("websites",JSONArray(g.websites.toList()));put("keywords",JSONArray(g.keywords.toList()));put("browsers",JSONArray(g.browsers.toList()));put("perApp",g.perApp);put("cooldownSeconds",g.cooldownSeconds)
         put("id",g.id);put("name",g.name);put("packages",JSONArray(g.packages.toList()))
         put("pause",g.pause);put("pauseSeconds",g.pauseSeconds);put("dailyMinutes",g.dailyMinutes)
@@ -38,7 +40,10 @@ object FocusCodec {
                 o.optBoolean("strict"),o.optBoolean("prompt",true),o.optInt("maxOpens",0).also{require(it in 0..1000)},
                 o.optBoolean("escalatingPause"),o.optInt("sessionMinutes",0).also{require(it in 0..240)},o.optBoolean("requireAuthentication",true),
                 FocusWindows.decode(o.optJSONArray("windows")?:JSONArray()),FocusWindows.strings(o,"websites"),FocusWindows.strings(o,"keywords"),FocusWindows.strings(o,"browsers"),
-                o.optBoolean("perApp"),o.optInt("cooldownSeconds",60).also{require(it in 0..3600)})
+                o.optBoolean("perApp"),o.optInt("cooldownSeconds",60).also{require(it in 0..3600)},
+                o.optBoolean("blockAlways"),o.optLong("breakStartedAt"),o.optLong("breakUntil")).also {
+                    require(it.breakStartedAt>=0 && it.breakUntil>=it.breakStartedAt && it.breakUntil-it.breakStartedAt<=24*60*60_000L)
+                }
         }.also{groups->require(groups.map{it.id}.distinct().size==groups.size)}
     }
     fun pauseDelay(group:FocusGroup,opens:Int):Int = if(!group.pause)0 else

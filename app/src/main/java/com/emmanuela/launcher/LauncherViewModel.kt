@@ -367,6 +367,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
     private val strictAuthorizations=mutableSetOf<String>()
     fun authorizeStrictGroup(id:String){strictAuthorizations+=id}
+    suspend fun setFocusBreak(id:String,minutes:Int):Boolean=write {
+        require(minutes in 0..1440)
+        repository.update { state ->
+            val group=state.focusGroups.first{it.id==id}
+            require(!group.strict||!group.requireAuthentication||strictAuthorizations.remove(id))
+            val started=if(minutes==0)0L else System.currentTimeMillis()
+            state.copy(focusGroups=state.focusGroups.map { if(it.id!=id)it else it.copy(
+                breakStartedAt=started,breakUntil=if(minutes==0)0L else started+minutes*60_000L) })
+        }
+    }
     suspend fun saveFocusGroup(group:FocusGroup):Boolean=write {
         require(group.name.isNotBlank()&&group.name.length<=40&&(group.packages.isNotEmpty()||group.websites.isNotEmpty()||group.keywords.isNotEmpty()))
         FocusCodec.decode(FocusCodec.encode(listOf(group))) // Validate before writing an unreadable configuration.

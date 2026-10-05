@@ -101,7 +101,7 @@ class RuleEnforcementService:AccessibilityService(){
                 var reason=PolicyRules.reason(policy,now,usage?.get(pkg))
                 val session=(SystemClock.elapsedRealtime()-sessionStarted).coerceAtLeast(0)
                 groups.forEach{g->
-                    if(g.sessionMinutes>0&&g.id !in sessionBase){val prior=applicationContext.recentGroupSession(if(g.perApp||g.packages.isEmpty())setOf(pkg)else g.packages,g.cooldownSeconds);if(prior==null){showBlock("Enable Usage Access for session limits",0,null);return@launch};sessionBase[g.id]=if(!prior.active&&System.currentTimeMillis()-prior.lastActiveAt>=g.cooldownSeconds*1000L)0L else prior.milliseconds}
+                    if(g.sessionMinutes>0&&FocusWindows.limited(g,now)&&g.id !in sessionBase){val prior=applicationContext.recentGroupSession(if(g.perApp||g.packages.isEmpty())setOf(pkg)else g.packages,g.cooldownSeconds);if(prior==null){showBlock("Enable Usage Access for session limits",0,null);return@launch};sessionBase[g.id]=if(!prior.active&&System.currentTimeMillis()-prior.lastActiveAt>=g.cooldownSeconds*1000L)0L else prior.milliseconds}
                     val used=usage?.let{if(g.perApp)it[pkg]?:0L else g.packages.sumOf{p->it[p]?:0L}+if(g.packages.isEmpty())it[pkg]?:0L else 0L}
                     val opens=(counts[FocusWindows.countKey(g,pkg,now.toLocalDate().toString())]as?Int)?:0
                     val effective=if(admitted)g.copy(maxOpens=0)else g

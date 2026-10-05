@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -37,7 +38,7 @@ fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:
     var draft by remember(id){mutableStateOf(original?:FocusGroup())}
     var busy by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope();val auth=rememberDeviceAuthentication(data.settings.ui.experience.authentication,model::authenticationChanged)
-    fun commit(delete:Boolean=false){val work={scope.launch{busy=true;if(if(delete)model.deleteFocusGroup(draft.id)else model.saveFocusGroup(draft))done();busy=false};Unit}
+    fun commit(delete:Boolean=false){val work={scope.launch{busy=true;if(if(delete)model.deleteFocusGroup(draft.id)else model.saveFocusGroup(draft.copy(breakStartedAt=original?.breakStartedAt?:0L,breakUntil=original?.breakUntil?:0L)))done();busy=false};Unit}
         if(original?.strict==true&&original.requireAuthentication)auth("Edit strict group"){model.authorizeStrictGroup(draft.id);work()}else work()}
     OutlinedTextField(draft.name,{draft=draft.copy(name=it.take(40))},label={Text(localized("Group name"))},modifier=Modifier.fillMaxWidth())
     var blockTab by remember{mutableStateOf("Apps")}
@@ -54,6 +55,10 @@ fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:
         apps.distinctBy{it.packageName}.filter{it.packageName in BrowserAdapters.ids}.forEach{app->ToggleRow(app.label,app.packageName in draft.browsers){yes->draft=draft.copy(browsers=if(yes)draft.browsers+app.packageName else draft.browsers-app.packageName)}}
     }
     val advanced=data.settings.ui.experience.advanced
+    SectionLabel("Strict Block")
+    ToggleRow("Block continuously",draft.blockAlways){draft=draft.copy(blockAlways=it)}
+    Text("Blocks this group's apps and sites until disabled or a Break is allowed. Other app and group rules still apply.",style=MaterialTheme.typography.bodySmall)
+    if(original!=null)FocusBreakControls(original,data,model)
     SectionLabel("Pause before opening")
     ToggleRow("Enabled",draft.pause){draft=draft.copy(pause=it)}
     if(draft.pause){
@@ -73,25 +78,60 @@ fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:
     }
     SectionLabel("Time windows")
     draft.windows.forEachIndexed{index,window->
-        ChoiceRow("Window ${index+1}",window.mode,listOf("Limit","Strict block")){mode->draft=draft.copy(windows=draft.windows.mapIndexed{i,w->if(i==index)w.copy(mode=mode)else w})}
+        ChoiceRow("Window ${index+1}",window.mode,listOf("Limit","Strict block","Break")){mode->draft=draft.copy(windows=draft.windows.mapIndexed{i,w->if(i==index)w.copy(mode=mode)else w})}
         Row{(1..7).forEach{day->TextButton(modifier=Modifier.weight(1f),contentPadding=PaddingValues(0.dp),onClick={val days=if(day in window.days)window.days-day else window.days+day;if(days.isNotEmpty())draft=draft.copy(windows=draft.windows.mapIndexed{i,w->if(i==index)w.copy(days=days)else w})}){Text(listOf("M","T","W","T","F","S","S")[day-1],color=if(day in window.days)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)}}}
         TimeChoice("Start",window.start){value->draft=draft.copy(windows=draft.windows.mapIndexed{i,w->if(i==index)w.copy(start=value)else w})}
         TimeChoice("End",window.end){value->draft=draft.copy(windows=draft.windows.mapIndexed{i,w->if(i==index)w.copy(end=value)else w})}
         TextButton(onClick={draft=draft.copy(windows=draft.windows.filterIndexed{i,_->i!=index})}){Text("Remove window")}
     }
     TextButton(enabled=draft.windows.size<32,onClick={draft=draft.copy(windows=draft.windows+FocusWindow())}){Text("+ Add time window")}
-    Text("Strict block wins when windows overlap. Limits apply inside Limit windows, or all day when no Limit window is defined.",style=MaterialTheme.typography.bodySmall)
-    SectionLabel("Legacy scheduled block")
+    Text("Scheduled Strict Block wins over Break. Break suspends this group's continuous block and limits. Limits otherwise apply inside Limit windows, or all day when none are defined.",style=MaterialTheme.typography.bodySmall)
+    SectionLabel("Scheduled block")
     ToggleRow("Enabled",draft.schedule){draft=draft.copy(schedule=it)}
     if(draft.schedule){
         Row{(1..7).forEach{day->TextButton(modifier=Modifier.weight(1f),contentPadding=PaddingValues(0.dp),onClick={draft=draft.copy(days=if(day in draft.days)draft.days-day else draft.days+day)}){Text(listOf("M","T","W","T","F","S","S")[day-1],color=if(day in draft.days)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)}}}
         TimeChoice("Start",draft.startMinute){draft=draft.copy(startMinute=it)};TimeChoice("End",draft.endMinute){draft=draft.copy(endMinute=it)}
     }
     if(advanced){SectionLabel("Mindful prompt");ToggleRow("Enabled",draft.prompt){draft=draft.copy(prompt=it)}}
-    SectionLabel("Strict mode")
+    SectionLabel("Protect rule changes")
+    Text("Requires device authentication to edit this group or start a Break. This does not itself block apps.",style=MaterialTheme.typography.bodySmall)
     ToggleRow("Enabled",draft.strict){yes->if(yes&&draft.requireAuthentication)auth("Enable strict group"){draft=draft.copy(strict=true)}else draft=draft.copy(strict=yes)}
     if(advanced)ToggleRow("Require authentication",draft.requireAuthentication){yes->draft=draft.copy(requireAuthentication=yes)}
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){if(original!=null)TextButton(enabled=!busy,onClick={commit(true)}){Text(localized("Delete"))};TextButton(onClick=done){Text(localized("Cancel"))};TextButton(enabled=!busy&&draft.name.isNotBlank()&&(draft.packages.isNotEmpty()||((draft.websites.isNotEmpty()||draft.keywords.isNotEmpty())&&draft.browsers.isNotEmpty()))&&(!draft.schedule||draft.days.isNotEmpty()),onClick={commit()}){Text(localized("Save"))}}
+}
+@Composable
+fun rememberFocusTime():java.time.ZonedDateTime {
+    val owner=androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val time by produceState(java.time.ZonedDateTime.now(),owner) {
+        owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while(true){value=java.time.ZonedDateTime.now();delay(1000)}
+        }
+    }
+    return time
+}
+
+@Composable
+fun FocusBreakControls(group:FocusGroup,data:LauncherData,model:LauncherViewModel) {
+    val now=rememberFocusTime()
+    var show by remember(group.id){mutableStateOf(false)}
+    var minutes by remember(group.id){mutableIntStateOf(10)}
+    var busy by remember{mutableStateOf(false)}
+    val scope=rememberCoroutineScope()
+    val auth=rememberDeviceAuthentication(data.settings.ui.experience.authentication,model::authenticationChanged)
+    fun change(duration:Int){
+        val work={scope.launch{busy=true;try{if(model.setFocusBreak(group.id,duration))show=false}finally{busy=false}};Unit}
+        if(group.strict&&group.requireAuthentication)auth("Change Break"){model.authorizeStrictGroup(group.id);work()}else work()
+    }
+    val remaining=(group.breakUntil-now.toInstant().toEpochMilli()).coerceAtLeast(0)/1000
+    if(remaining>0){
+        Text("Break: ${remaining/60}m ${remaining%60}s remaining"+(if(FocusWindows.onBreak(group,now))"" else " · scheduled block takes priority"))
+        TextButton(enabled=!busy,onClick={change(0)}){Text("End Break")}
+    }else TextButton(enabled=!busy,onClick={show=true}){Text("Take a Break")}
+    if(show)AlertDialog(onDismissRequest={if(!busy)show=false},title={Text("Temporary access")},text={Column{
+        Text("Only this group's rules are suspended. Scheduled Strict Block and other groups still apply. Usage allowances are not reset.")
+        Row{listOf(5,10,15).forEach{value->TextButton(onClick={minutes=value}){Text("$value min")}}}
+        SliderRow("Minutes",minutes.toFloat(),1f..120f){minutes=it.toInt()}
+    }},confirmButton={TextButton(enabled=!busy,onClick={change(minutes)}){Text("Start $minutes-minute Break")}},dismissButton={TextButton(enabled=!busy,onClick={show=false}){Text("Cancel")}})
 }
 @Composable
 fun TimeChoice(label:String,minute:Int,save:(Int)->Unit){var show by remember{mutableStateOf(false)};SettingRow(label,"%02d:%02d".format(minute/60,minute%60)){show=true};if(show){val picker=androidx.compose.material3.rememberTimePickerState(minute/60,minute%60,true);AlertDialog(onDismissRequest={show=false},title={Text(label)},text={androidx.compose.material3.TimeInput(picker)},confirmButton={TextButton(onClick={save(picker.hour*60+picker.minute);show=false}){Text(localized("Save"))}},dismissButton={TextButton(onClick={show=false}){Text(localized("Cancel"))}})}}

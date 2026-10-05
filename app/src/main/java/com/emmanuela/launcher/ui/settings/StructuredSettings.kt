@@ -358,11 +358,19 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     Text("Optional Accessibility access detects foreground apps and reads only supported browser address fields. No URLs or page contents are saved. Rules need this access to apply outside EmmanueLA.",style=MaterialTheme.typography.bodySmall)
                     SettingRow("Enable background rule access"){open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))}
                     Text(if(com.emmanuela.launcher.platform.EnforcementBridge.connected)"Background rule service connected"else "Background rule service not connected",style=MaterialTheme.typography.bodySmall)
+                    val focusNow=com.emmanuela.launcher.ui.mindful.rememberFocusTime()
                     SectionLabel("Groups")
                     data.focusGroups.forEach{g->Column(Modifier.fillMaxWidth().clickable{navigate("group:${g.id}")}.padding(vertical=16.dp)){
                         Text(g.name,style=MaterialTheme.typography.titleMedium)
                         Text(apps.filter{it.packageName in g.packages}.distinctBy{it.packageName}.joinToString{it.label},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(if(g.dailyMinutes>0)"${g.dailyMinutes} min/day" else "Unlimited",style=MaterialTheme.typography.bodySmall)
+                        Text(when {
+                            com.emmanuela.launcher.data.FocusWindows.strict(g,focusNow)->"Active · Strict Block"
+                            com.emmanuela.launcher.data.FocusWindows.onBreak(g,focusNow)->"Break active"
+                            g.dailyMinutes>0->"${g.dailyMinutes} min/day"
+                            else->"No daily limit"
+                        },style=MaterialTheme.typography.bodySmall)
+                        if(g.websites.isNotEmpty())Text("Sites: ${g.websites.joinToString()}",style=MaterialTheme.typography.bodySmall)
+                        Text(if(g.strict&&g.requireAuthentication)"Changes protected by device authentication"else "Changes are not protected",style=MaterialTheme.typography.bodySmall)
                         HorizontalDivider(Modifier.padding(top=16.dp),color=MaterialTheme.colorScheme.outline.copy(alpha=.15f))
                     }}
                     SettingRow("+ Create group"){navigate("group:new")}

@@ -8,17 +8,25 @@ import java.net.URI
 data class FocusWindow(val days:Set<Int> = (1..7).toSet(),val start:Int=540,val end:Int=1020,val mode:String="Limit")
 object FocusWindows {
     fun encode(windows:List<FocusWindow>)=JSONArray().apply{windows.forEach{put(JSONObject().put("days",JSONArray(it.days.toList())).put("start",it.start).put("end",it.end).put("mode",it.mode))}}
-    fun decode(a:JSONArray):List<FocusWindow>{require(a.length()<=32);return List(a.length()){i->val o=a.getJSONObject(i);val d=o.getJSONArray("days");require(d.length() in 1..7);FocusWindow(List(d.length()){d.getInt(it).also{n->require(n in 1..7)}}.toSet(),o.getInt("start").also{require(it in 0..1439)},o.getInt("end").also{require(it in 0..1439)},o.getString("mode").also{require(it in listOf("Limit","Strict block"))})}}
+    fun decode(a:JSONArray):List<FocusWindow>{require(a.length()<=32);return List(a.length()){i->val o=a.getJSONObject(i);val d=o.getJSONArray("days");require(d.length() in 1..7);FocusWindow(List(d.length()){d.getInt(it).also{n->require(n in 1..7)}}.toSet(),o.getInt("start").also{require(it in 0..1439)},o.getInt("end").also{require(it in 0..1439)},o.getString("mode").also{require(it in listOf("Limit","Strict block","Break"))})}}
     fun strings(o:JSONObject,key:String):Set<String>{val a=o.optJSONArray(key)?:JSONArray();require(a.length()<=200);return List(a.length()){a.getString(it).also{s->require(s.length in 1..512)}}.toSet()}
     fun active(w:FocusWindow,now:ZonedDateTime):Boolean{val m=now.hour*60+now.minute;return if(w.start==w.end)now.dayOfWeek.value in w.days else if(w.start<w.end)now.dayOfWeek.value in w.days&&m in w.start until w.end else(now.dayOfWeek.value in w.days&&m>=w.start)||(now.minusDays(1).dayOfWeek.value in w.days&&m<w.end)}
-    fun limited(g:FocusGroup,now:ZonedDateTime)=g.windows.none{it.mode=="Limit"}||g.windows.any{it.mode=="Limit"&&active(it,now)}
-    fun strict(g:FocusGroup,now:ZonedDateTime)=FocusCodec.scheduled(g,now)||g.windows.any{it.mode=="Strict block"&&active(it,now)}
+    fun limited(g:FocusGroup,now:ZonedDateTime)=!onBreak(g,now)&&(g.windows.none{it.mode=="Limit"}||g.windows.any{it.mode=="Limit"&&active(it,now)})
+    private fun scheduledStrict(g:FocusGroup,now:ZonedDateTime)=FocusCodec.scheduled(g,now)||g.windows.any{it.mode=="Strict block"&&active(it,now)}
+    fun onBreak(g:FocusGroup,now:ZonedDateTime):Boolean {
+        if(scheduledStrict(g,now))return false
+        val epoch=now.toInstant().toEpochMilli()
+        return (g.breakStartedAt>0 && epoch>=g.breakStartedAt && epoch<g.breakUntil)||g.windows.any{it.mode=="Break"&&active(it,now)}
+    }
+    fun strict(g:FocusGroup,now:ZonedDateTime)=scheduledStrict(g,now)||(g.blockAlways&&!onBreak(g,now))
     fun host(input:String):String?=runCatching{val raw=input.trim().lowercase();val uri=URI(if(raw.contains("://"))raw else "https://$raw");uri.host?.removeSuffix(".")?.takeIf{it.contains('.')&&!it.contains(' ')}}.getOrNull()
     fun matches(g:FocusGroup,url:String):Boolean{val actualHost=host(url)?:return false;return g.websites.any{site->val d=host(site);d!=null&&(actualHost==d||actualHost.endsWith(".$d"))}||g.keywords.any{url.contains(it,ignoreCase=true)}}
     fun nextBoundary(g:FocusGroup,now:ZonedDateTime):Long?{
         val windows=g.windows+if(g.schedule)listOf(FocusWindow(g.days,g.startMinute,g.endMinute,"Strict block"))else emptyList()
-        if(windows.isEmpty())return null
+        val breakDelay=(g.breakUntil-now.toInstant().toEpochMilli()).takeIf{g.breakStartedAt>0&&now.toInstant().toEpochMilli()>=g.breakStartedAt&&it>0}
+        if(windows.isEmpty())return breakDelay
         val candidates=mutableListOf<java.time.Instant>()
+        breakDelay?.let{candidates+=now.toInstant().plusMillis(it)}
         fun add(local:java.time.LocalDateTime){
             val offsets=now.zone.rules.getValidOffsets(local)
             // Both copies of a repeated hour are real boundaries. Gaps also need

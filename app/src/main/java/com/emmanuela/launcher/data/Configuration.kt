@@ -30,7 +30,7 @@ data class LauncherData(val settings: Preferences = Preferences(), val favorites
 
 object ConfigurationCodec {
     fun encode(data: LauncherData): String = JSONObject().apply {
-        put("version", 7)
+        put("version", 8)
         put("folders", JSONObject(FolderCodec.encode(data.folders)).getJSONArray("folders"))
         put("favorites", JSONArray().apply { data.favorites.forEach { put(JSONObject().put("id", it.id)) } })
         put("appMetadata", JSONObject().apply {
@@ -57,7 +57,7 @@ object ConfigurationCodec {
         require(raw.toByteArray(Charsets.UTF_8).size <= 2_000_000) { "Backup too large" }
         val root = JSONObject(raw)
         val version = root.getInt("version")
-        require(version in 2..7) { "Unsupported backup version" }
+        require(version in 2..8) { "Unsupported backup version" }
         val s = root.getJSONObject("settings")
         fun choice(key: String, default: String, values: List<String>): String = s.optString(key, default).also { require(it in values) }
         fun action(key: String, default: String) = s.optString(key, default).also {
@@ -121,7 +121,7 @@ object ConfigurationCodec {
         return LauncherData(migrated,favorites,folders,metadata,policies,FocusCodec.decode(root.optJSONArray("focusGroups")?:JSONArray()))
     }
     // Media grants and font files cannot travel between devices in a JSON backup.
-    fun portable(data: LauncherData) = data.copy(settings = data.settings.copy(wallpapers = emptyList(), customFont = "", font = if (data.settings.font == "Custom") "Sans" else data.settings.font, dailyWallpaper = false, ui = data.settings.ui.copy(v2=data.settings.ui.v2.copy(wallpaperAlbum="",photoStyles=emptyMap()))))
+    fun portable(data: LauncherData) = data.copy(focusGroups=data.focusGroups.map{it.copy(breakStartedAt=0,breakUntil=0)}, settings = data.settings.copy(wallpapers = emptyList(), customFont = "", font = if (data.settings.font == "Custom") "Sans" else data.settings.font, dailyWallpaper = false, ui = data.settings.ui.copy(v2=data.settings.ui.v2.copy(wallpaperAlbum="",photoStyles=emptyMap()))))
 }
 class ConfigurationRepository(private val context: Context) {
     private val store = context.applicationContext.emaStore
