@@ -22,20 +22,15 @@ import java.time.ZonedDateTime
 
 /** Short, package-bound handoff prevents counting launcher admissions twice. */
 object EnforcementBridge {
-    @Volatile var connected=false
+    private val mutableStatus=kotlinx.coroutines.flow.MutableStateFlow(EnforcementStatus())
+    val status:kotlinx.coroutines.flow.StateFlow<EnforcementStatus> = mutableStatus
+    var connected:Boolean
+        get()=mutableStatus.value.connected
+        set(value){mutableStatus.value=mutableStatus.value.copy(connected=value)}
+    fun browser(pkg:String,readable:Boolean,issue:String?){mutableStatus.value=EnforcementStatus(connected,pkg,readable,issue)}
     private val grants=mutableMapOf<String,Long>()
     @Synchronized fun grant(pkg:String){grants[pkg]=SystemClock.elapsedRealtime()+5000}
     @Synchronized fun consume(pkg:String):Boolean{val at=grants.remove(pkg)?:return false;return SystemClock.elapsedRealtime()<at}
-}
-object BrowserAdapters {
-    val ids=mapOf(
-        "com.android.chrome" to listOf("url_bar"),
-        "com.chrome.beta" to listOf("url_bar"),
-        "com.brave.browser" to listOf("url_bar"),
-        "com.microsoft.emmx" to listOf("url_bar"),
-        "org.mozilla.firefox" to listOf("mozac_browser_toolbar_url_view","url_bar"),
-        "com.sec.android.app.sbrowser" to listOf("location_bar_edit_text","location_bar_text_view")
-    )
 }
 class RuleEnforcementService:AccessibilityService(){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
@@ -47,7 +42,7 @@ class RuleEnforcementService:AccessibilityService(){
     private var admission:Job?=null
     private var configurationJob:Job?=null
     private var receiverRegistered=false
-    private val screenReceiver=object:BroadcastReceiver(){override fun onReceive(context:Context?,intent:Intent?){if(intent?.action==Intent.ACTION_SCREEN_OFF){generation++;check?.cancel();admission?.cancel();timer?.cancel();foreground="";admitted=false;removeOverlay()}else if(intent?.action in setOf(Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED)){timer?.cancel();evaluate(false)}}}
+    private val screenReceiver=object:BroadcastReceiver(){override fun onReceive(context:Context?,intent:Intent?){if(intent?.action==Intent.ACTION_SCREEN_OFF){generation++;check?.cancel();admission?.cancel();timer?.cancel();foreground="";currentUrl="";browserRead?.cancel();browserRead=null;admitted=false;removeOverlay()}else if(intent?.action in setOf(Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED)){timer?.cancel();evaluate(false)}}}
     private var sessionStarted=0L
     private val sessionBase=mutableMapOf<String,Long>()
     private var check:Job?=null
@@ -56,6 +51,9 @@ class RuleEnforcementService:AccessibilityService(){
     private var overlay:LinearLayout?=null
     private var shownReason=""
     private var currentUrl=""
+    private var browserRead:Job?=null
+    private var browserReadPending=false
+    private var warnedAddress=false
     private var activeRules=emptySet<String>()
     private val countedRules=mutableSetOf<String>()
     private val warnedRules=mutableSetOf<String>()
@@ -73,12 +71,35 @@ class RuleEnforcementService:AccessibilityService(){
             // System permission/keyguard windows must remain reachable.
             if(pkg==packageName&&overlay!=null)return
             if(pkg=="com.android.systemui"||pkg=="com.android.settings"||pkg=="com.google.android.permissioncontroller"||pkg=="com.android.permissioncontroller"){generation++;check?.cancel();admission?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();foreground="";admitted=false;return}
-            if(pkg!=foreground){generation++;admission?.cancel();check?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();sessionBase.clear();countedRules.clear();warnedRules.clear();activeRules=emptySet();foreground=pkg;handoffPending=EnforcementBridge.consume(pkg);admitted=false;currentUrl="";sessionStarted=SystemClock.elapsedRealtime();evaluate(true)}
+            if(pkg!=foreground){generation++;browserRead?.cancel();browserRead=null;warnedAddress=false;EnforcementBridge.connected=true;admission?.cancel();check?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();sessionBase.clear();countedRules.clear();warnedRules.clear();activeRules=emptySet();foreground=pkg;handoffPending=EnforcementBridge.consume(pkg);admitted=false;currentUrl="";sessionStarted=SystemClock.elapsedRealtime();evaluate(true)}
         }
-        if(pkg==foreground&&pkg in BrowserAdapters.ids&&(event.eventType==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED||event.eventType==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)){
-            val root=rootInActiveWindow?:return
-            val url=BrowserAdapters.ids[pkg].orEmpty().asSequence().mapNotNull{id->root.findAccessibilityNodeInfosByViewId("$pkg:id/$id").firstOrNull()?.text?.toString()}.firstOrNull().orEmpty()
-            if(url!=currentUrl){currentUrl=url;evaluate(false)}
+        if(pkg==foreground&&state.focusGroups.any{pkg in it.browsers}&&(event.eventType==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED||event.eventType==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)){
+            readBrowserAddress(pkg)
+        }
+    }
+    private fun readBrowserAddress(pkg:String){
+        browserReadPending=true
+        if(browserRead?.isActive==true)return
+        browserRead=scope.launch{
+            do {
+                browserReadPending=false
+                val expected=generation
+                // Accessibility tree queries can block on the browser; keep them off the UI thread.
+                val snapshot=withContext(Dispatchers.IO){
+                    val root=rootInActiveWindow
+                    val owner=root?.packageName?.toString()
+                    val values=if(owner==pkg)BrowserAdapters.ids[pkg].orEmpty().flatMap{id->root?.findAccessibilityNodeInfosByViewId("$pkg:id/$id").orEmpty().mapNotNull{it.text?.toString()}}else emptyList()
+                    owner to values
+                }
+                if(expected!=generation||foreground!=pkg||!state.settings.ui.v2.backgroundRules)return@launch
+                // Our own overlay hides the browser tree; keep the decision that created it.
+                if(snapshot.first==packageName&&overlay!=null)return@launch
+                val address=BrowserAdapters.address(pkg,snapshot.first,snapshot.second)
+                val issue=if(address!=null)null else if(pkg !in BrowserAdapters.ids)"This browser has no address adapter. Website rules are unavailable." else "Browser address unavailable. Website rules cannot be verified on this screen."
+                EnforcementBridge.browser(pkg,address!=null,issue)
+                if(issue!=null&&!warnedAddress){warnedAddress=true;android.widget.Toast.makeText(this@RuleEnforcementService,issue,android.widget.Toast.LENGTH_LONG).show()}
+                if(address.orEmpty()!=currentUrl){currentUrl=address.orEmpty();evaluate(false)}
+            }while(browserReadPending)
         }
     }
     private fun groups(pkg:String)=state.focusGroups.filter{pkg in it.packages||(pkg in it.browsers&&(it.websites.isNotEmpty()||it.keywords.isNotEmpty())&&FocusWindows.matches(it,currentUrl))}

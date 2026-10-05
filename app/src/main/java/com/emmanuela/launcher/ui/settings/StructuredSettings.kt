@@ -359,7 +359,11 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     ToggleRow("Enforce outside launcher",v.backgroundRules){yes->model.v2Settings{it.copy(backgroundRules=yes)}}
                     Text("Optional Accessibility access detects foreground apps and reads only supported browser address fields. No URLs or page contents are saved. Rules need this access to apply outside EmmanueLA.",style=MaterialTheme.typography.bodySmall)
                     SettingRow("Enable background rule access"){open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))}
-                    Text(if(com.emmanuela.launcher.platform.EnforcementBridge.connected)"Background rule service connected"else "Background rule service not connected",style=MaterialTheme.typography.bodySmall)
+                    val enforcement by com.emmanuela.launcher.platform.EnforcementBridge.status.collectAsStateWithLifecycle()
+                    Text(if(enforcement.connected)"Background rule service connected"else "Background rule service not connected",style=MaterialTheme.typography.bodySmall)
+                    enforcement.browserPackage?.let{pkg->Text("Last browser address check: ${apps.firstOrNull{it.packageName==pkg}?.label?:pkg} · ${if(enforcement.addressReadable==true)"readable" else "unavailable"}",style=MaterialTheme.typography.bodySmall)}
+                    enforcement.issue?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
+                    Text("Website rules are best-effort: a browser must expose its address. Private tabs, hidden address bars and browser updates may bypass them. Opera has no adapter. Selective Shorts, Reels and feed removal is unsupported.",style=MaterialTheme.typography.bodySmall)
                     val focusNow=com.emmanuela.launcher.ui.mindful.rememberFocusTime()
                     SectionLabel("Groups")
                     data.focusGroups.forEach{g->Column(Modifier.fillMaxWidth().clickable{navigate("group:${g.id}")}.padding(vertical=16.dp)){

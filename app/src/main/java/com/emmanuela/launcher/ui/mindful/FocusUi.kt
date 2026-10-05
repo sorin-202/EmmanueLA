@@ -52,6 +52,8 @@ fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:
         (if(blockTab=="Sites")draft.websites else draft.keywords).forEach{entry->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(entry,Modifier.weight(1f));TextButton(onClick={draft=if(blockTab=="Sites")draft.copy(websites=draft.websites-entry)else draft.copy(keywords=draft.keywords-entry)}){Text("Remove")}}}
         Text("Sites match domains and subdomains. Keywords match the URL exposed by a supported browser, not encrypted page content.",style=MaterialTheme.typography.bodySmall)
         SectionLabel("Browsers with address adapters")
+        Text("Best-effort only. These adapters are not a guarantee for every browser version or private mode. An unreadable address produces a warning; encrypted page content is never inspected.",style=MaterialTheme.typography.bodySmall)
+        if(apps.none{it.packageName in BrowserAdapters.ids})Text("No browser with an address adapter is installed.",style=MaterialTheme.typography.bodySmall)
         apps.distinctBy{it.packageName}.filter{it.packageName in BrowserAdapters.ids}.forEach{app->ToggleRow(app.label,app.packageName in draft.browsers){yes->draft=draft.copy(browsers=if(yes)draft.browsers+app.packageName else draft.browsers-app.packageName)}}
     }
     val advanced=data.settings.ui.experience.advanced
