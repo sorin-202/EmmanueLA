@@ -44,6 +44,47 @@ class LauncherFlowTest {
         assertTrue("Clickable control: $label",node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)==true)
         instrumentation.waitForIdleSync()
     }
+    @Test fun configuredSearchActionRequiresTapAndCanBeRemoved()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=true,searchActions=setOf("settings"))))))
+            ActivityScenario.launch(MainActivity::class.java).use {
+                click("All Apps")
+                val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Settings")}))
+                find("Action: Settings")
+                SystemClock.sleep(500)
+                click("Action: Settings")
+                click("App list",scroll=true)
+                click("Search actions",scroll=true)
+                find("Choose up to 16 actions to find by name in App List search. Actions always require a tap.")
+                click("Settings")
+                kotlinx.coroutines.withTimeout(15_000){repository.data.first{it.settings.ui.experience.searchActions.isEmpty()}}
+                click("Add search action")
+                click("Clock",scroll=true)
+                kotlinx.coroutines.withTimeout(15_000){repository.data.first{"clock" in it.settings.ui.experience.searchActions}}
+            }
+        }finally{repository.restore(original)}
+    }
+    @Test fun applicationSearchActionCannotBypassBlockedPolicy()=runBlocking<Unit> {
+        val target=instrumentation.targetContext
+        val info=target.packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER).setPackage("com.android.settings"),0).first().activityInfo
+        val id=android.content.ComponentName(info.packageName,info.name).flattenToString()
+        val repository=ConfigurationRepository(target)
+        val original=repository.data.first()
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=true,searchActions=setOf("app:$id")))),policies=mapOf("com.android.settings" to AppPolicy(blocked=true))))
+            ActivityScenario.launch(MainActivity::class.java).use {
+                click("All Apps")
+                val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Settings")}))
+                click("Action: Settings")
+                find("App unavailable in EmmanueLA")
+                assertEquals(target.packageName,instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString())
+            }
+        }finally{repository.restore(original)}
+    }
     @Test fun typedIntentionGatesLaunchAndIsNotPersisted()=runBlocking {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()

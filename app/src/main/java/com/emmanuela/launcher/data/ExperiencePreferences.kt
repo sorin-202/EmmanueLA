@@ -26,6 +26,7 @@ data class ExperiencePreferences(
     val appAlignment: String = "Left",
     val appIcons: Boolean = false,
     val appTextScale: Float = 1f,
+    val searchActions: Set<String> = emptySet(),
     val searchAliases: Boolean = true,
     val searchPackages: Boolean = false,
     val autoLaunch: Boolean = true,
@@ -82,6 +83,7 @@ object ExperienceCodec {
         put("appAlignment",p.appAlignment)
         put("appIcons",p.appIcons)
         put("appTextScale",p.appTextScale.toDouble())
+        put("searchActions",org.json.JSONArray(p.searchActions.toList()))
         put("searchAliases",p.searchAliases)
         put("searchPackages",p.searchPackages)
         put("autoLaunch",p.autoLaunch)
@@ -153,6 +155,7 @@ object ExperienceCodec {
             appAlignment=choice("appAlignment",d.appAlignment,listOf("Left","Center","Right")),
             appIcons=o.optBoolean("appIcons",d.appIcons),
             appTextScale=o.optDouble("appTextScale",d.appTextScale.toDouble()).toFloat().also{require(it in .7f..1.5f)},
+            searchActions=SearchActions.decode(o.optJSONArray("searchActions")),
             searchAliases=o.optBoolean("searchAliases",d.searchAliases),
             searchPackages=o.optBoolean("searchPackages",d.searchPackages),
             autoLaunch=o.optBoolean("autoLaunch",d.autoLaunch),

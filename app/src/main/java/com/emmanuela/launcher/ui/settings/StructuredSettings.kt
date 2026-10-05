@@ -63,7 +63,7 @@ object SettingsRoutes {
         page.startsWith("widget:") -> "widgets"
         page.startsWith("group:") -> "live-moment"
         page in listOf("widgets","bottom-controls","home-alphabet","widget-style","home-text-style") -> "home-settings"
-        page in listOf("cursor","contacts-search") -> "app-settings"
+        page in listOf("cursor","contacts-search","search-actions") -> "app-settings"
         page=="locked-folders" -> "folder-settings"
         page in listOf("daily-wallpaper","motion","wallpaper-editor") -> "appearance"
         page in listOf("metadata","folder-assignments","notification-filter","management") -> "apps-hub"
@@ -241,10 +241,21 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                         ToggleRow("Search package names",e.searchPackages){yes->model.experienceSettings{it.copy(searchPackages=yes)}}
                         SettingRow("Cursor style"){navigate("cursor")}}
                     SettingRow("Contact search (@)"){navigate("contacts-search")}
+                    SettingRow("Search actions"){navigate("search-actions")}
                     SectionLabel("Alphabet");ToggleRow("Alphabet rail",u.alphabet){yes->model.uiSettings{it.copy(alphabet=yes)}}
                     ChoiceRow("Animation",u.alphabetAnimation,listOf("None","Wave","Bubble","Fade")){value->model.uiSettings{it.copy(alphabetAnimation=value)}}
                     if(u.alphabetAnimation=="Wave")SliderRow("Wave movement",e.appWaveStrength,16f..80f){n->model.experienceSettings{it.copy(appWaveStrength=n)}}
                     ToggleRow("Haptics",e.alphabetHaptics){yes->model.experienceSettings{it.copy(alphabetHaptics=yes)}};com.emmanuela.launcher.platform.HapticTestRow()
+                }
+                page=="search-actions" -> {
+                    var choosing by remember { mutableStateOf(false) }
+                    Text("Choose up to 16 actions to find by name in App List search. Actions always require a tap.")
+                    e.searchActions.forEach { key -> SettingRow(actionName(key,apps),"Remove"){model.experienceSettings{it.copy(searchActions=it.searchActions-key)}} }
+                    if(e.searchActions.size<16)SettingRow("Add search action"){choosing=true}
+                    if(choosing)ActionPicker(apps,{choosing=false}){key->
+                        if(com.emmanuela.launcher.data.SearchActions.valid(key))model.experienceSettings{it.copy(searchActions=(it.searchActions+key).take(16).toSet())}
+                        choosing=false
+                    }
                 }
                 page=="cursor" -> {
                     CursorStylePicker(e.cursorStyle){value->model.experienceSettings{it.copy(cursorStyle=value)}}
