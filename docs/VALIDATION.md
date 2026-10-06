@@ -30,3 +30,5 @@ Workflow and issue-template YAML parse and current documentation links pass loca
 Physical biometric sensors, haptics, OEM lifecycle, battery and 60/90/120Hz acceptance are **BLOCKED BY ENVIRONMENT** because no physical hardware is available. Emulator results are not physical performance certification. Existing lint warnings, partial localization and the documented DataStore cold-subscription limitation remain. Broad TalkBack, keyboard and multi-device acceptance is not exhaustive.
 
 Earlier unavailable-toolchain statements are historical; see [delivered validation notes](history/VALIDATION-delivered.md).
+
+The [final engineering report](FINAL_REPORT.md) consolidates the release decision and remaining acceptance boundaries.

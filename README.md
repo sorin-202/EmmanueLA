@@ -42,7 +42,7 @@ On Windows use `gradlew.bat`. Outputs are under `app/build/outputs/`. Select Emm
 
 **BETA READY for controlled testing.** Final clean validation of code checkpoint `056f629` passed **123 JVM tests and all 18 API35 emulator tests**, lint (0 errors, 43 warnings), debug/release APK and release AAB builds. A locally development-signed copy of the minified release passed runtime smoke checks. No production release was published.
 
-See [current validation](docs/VALIDATION.md), [engineering evidence](docs/ENGINEERING_VALIDATION.md), [performance and size measurements](docs/PERFORMANCE.md), and [search behavior](docs/SEARCH.md). The universal release APK is 2,789,120 bytes, down 8.2% from the measured M6 baseline. Emulator search measurements improved; physical frame-rate and battery performance are not certified.
+See the [final engineering report](docs/FINAL_REPORT.md), [current validation](docs/VALIDATION.md), [engineering evidence](docs/ENGINEERING_VALIDATION.md), [performance and size measurements](docs/PERFORMANCE.md), and [search behavior](docs/SEARCH.md). The universal release APK is 2,789,120 bytes, down 8.2% from the measured M6 baseline. Emulator search measurements improved; physical frame-rate and battery performance are not certified.
 
 ### Release screenshots
 
