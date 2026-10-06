@@ -1,3 +1,14 @@
+# Current architecture — 2026-10-06
+
+The existing single-module Compose launcher remains intact. Pure search/focus/configuration rules live in data; Android services and repositories live in platform; feature screens live under ui. LauncherViewModel is still a large coordinator, a maintainability limitation rather than a reason for an unvalidated rewrite.
+
+Configuration v9 reads versions2–9, validates imports and commits updates atomically. Break grants persist only for their bounded session; intentions and launch authentication are transient. Notification content and browsing history are not stored. App admission uses the shared authorization path.
+
+Index preparation runs on Default. M6 verified prepared query/name tokens and release resource shrinking; see PERFORMANCE.md for before/after measurements and environment limits. Drag state remains transient until meaningful release; cancellation restores the starting position. Navigation rejects consumed cancellation events. Overlay semantics hide obscured Home controls.
+
+DataStore1.1.7 has upstream issue431787506: a newly starting collector concurrent with a write can miss that update. A fresh read sees the saved value. Continuous UI/test observers avoid the reproduced startup window, but this is a documented dependency limitation; an upstream stable fix should be adopted when available. No production polling workaround or alpha upgrade was added solely for tests.
+
+The following sections are retained delivery history. Their schema/test-environment statements are superseded by this section and VALIDATION.md.
 ## Patch 2.5.2
 
 V2Preferences adaugă locationAction opțional cu No action legacy. Codecurile Configuration/Ui/V2 acceptă drawer. PagePolicy.drawer alege o pagină drawer activă înainte de Home/blank; resolve aplică fallback și acțiunilor vechi. bottomSize Custom se normalizează la Medium fără pierderea valorilor Width/Height/Offset.

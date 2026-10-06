@@ -43,7 +43,7 @@ Actualizare țintită a proiectului v2.3 existent. Identificatorul `com.emmanuel
 
 ## Build și testare locală obligatorie
 
-Nu există Android SDK, Gradle instalat sau compilator Kotlin disponibil în acest mediu. Încercarea de download Gradle din etapa anterioară a eșuat; logul istoric este `docs/build_attempt.log`. Pentru acest release nu s-a rulat compilarea cloud, JUnit sau lint. Nu este inclus un APK verificat.
+Nu există Android SDK, Gradle instalat sau compilator Kotlin disponibil în acest mediu. Încercarea de download Gradle din etapa anterioară a eșuat; logul istoric este păstrat în istoricul Git. Pentru acest release nu s-a rulat compilarea cloud, JUnit sau lint. Nu este inclus un APK verificat.
 
 1. Extrage arhiva și deschide folderul EmmanueLA în Android Studio.
 2. Selectează Gradle JDK 17 și instalează Android SDK Platform 35; fă Gradle Sync.

@@ -22,9 +22,9 @@ EmmanueLA stores settings, aliases, tags, folders and focus rules locally. It ha
 Weather requests send selected coordinates to api.open-meteo.com and typed location queries to geocoding-api.open-meteo.com. Requests are HTTPS with timeouts. External intents are handled by the selected Android app and its privacy policy. Notification digest stores package counts and hashes of identities, not message bodies. Accessibility inspects supported browser address fields; it does not retain browsing history.
 
 ## Reliability classification
-- Launcher app admission: deterministic local rule evaluation; runtime integration still requires device validation.
+- Launcher app admission: deterministic local rule evaluation; API35 tests verify blocked-policy and intention gates. Physical/OEM acceptance remains outstanding.
 - External-app blocking: BEST-EFFORT optional accessibility overlay; owner/OEM can disable it.
-- Website blocking: BEST-EFFORT visible address matching. Existing adapters cover Chrome/beta, Brave, Edge, Firefox and Samsung Internet. None has been device-verified in this engineering session. Hidden address bars, private modes, custom tabs, browser updates and inaccessible trees can bypass matching.
+- Website blocking: BEST-EFFORT visible address matching. The tested official Firefox157 normal address source is UNSUPPORTED and reports an honest diagnostic. Legacy Firefox IDs and Chrome/beta, Brave, Edge and Samsung hints are unvalidated. Hidden address bars, private modes, custom tabs, browser updates and inaccessible trees can prevent matching. See BROWSER_COMPATIBILITY.md for exact version/mode evidence.
 - Opera: UNSUPPORTED by current adapters.
 - Selective Shorts/Reels/Explore/feed suppression: UNSUPPORTED. No claim that a launcher can reliably remove arbitrary native app surfaces.
 - Notification quiet delivery: initial sound/heads-up cannot be reversed after listener delivery. Use Android per-app channels for reliable quiet delivery.

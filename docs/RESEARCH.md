@@ -26,3 +26,5 @@ Research informs design; no external source code or new dependency has been copi
 ## Implementation decisions
 
 Search will prioritize visible labels/aliases over optional package matches. Tag/contact/web modes are explicit prefixes. Alphabet navigation is for alphabetically arranged results; relevance results must not be re-sorted by the rail. Folder results must use the existing authentication/open path. Focus rules must share temporal logic; device behavior and browser adapters need independent runtime verification.
+
+CI extension: reactivecircus/android-emulator-runner v2 runs API35 instrumentation on GitHub-hosted Linux. Its upstream LICENSE is Apache-2.0 (inspected 2026-10-06 at https://github.com/ReactiveCircus/android-emulator-runner/blob/main/LICENSE); used as a CI action only, with no source copied or app dependency added. Action inputs were checked against upstream action.yml. Local equivalent tests execute here; remote GitHub CI execution is not claimed.

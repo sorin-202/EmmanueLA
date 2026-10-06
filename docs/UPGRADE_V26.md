@@ -1,3 +1,5 @@
+> Historical delivery notes. For current executed evidence and limitations, see [VALIDATION.md](VALIDATION.md) and [ENGINEERING_VALIDATION.md](ENGINEERING_VALIDATION.md). These notes are not the current task list.
+
 # EmmanueLA 2.6.0-beta — targeted upgrade
 
 This iteration extends 2.5.2. Application ID, persisted configuration store, existing visual palette and vector assets are retained. It does not reconstruct the launcher.
@@ -39,7 +41,7 @@ UI observes state flows. Usage queries, preference counting and disk writes use 
 
 `V26RulesTest` adds eight JVM regression tests for overnight boundaries, overlap precedence, hybrid budgets, domain matching, count keys, dense span collisions and codec round-trip. They are **provided but not executed** in this cloud environment.
 
-The command below was attempted and failed before compilation because `services.gradle.org` could not resolve. See `build_attempt_v26.log`. There is no verified APK, successful lint result, device test result or FPS guarantee in this delivery.
+The command below was attempted and failed before compilation because `services.gradle.org` could not resolve. The obsolete network-failure log is retained in Git history. There is no verified APK, successful lint result, device test result or FPS guarantee in this delivery.
 
 ## Exact local validation
 

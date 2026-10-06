@@ -1,73 +1,57 @@
-# EmmanueLA 2.6.0-beta
+# EmmanueLA
 
-Targeted upgrade of the existing launcher. See [upgrade details and exact local validation](docs/UPGRADE_V26.md). Source checks passed; Android compilation and device tests are not verified in this environment.
+<img src="docs/images/logo.svg" width="88" alt="EmmanueLA logo">
 
-# EmmanueLA 2.5.2 — corecții ale proiectului existent
+A minimalist Android launcher for intentional phone use. Local settings, deliberate search, organized folders and optional focus rules. This project continues the existing v2.6 application and preserves its identity and data format.
 
-Această arhivă continuă actualizarea v2.3 a surselor `EmmanueLA_v2_1_refactor(1).zip`. Nu este un launcher construit de la zero. Pachetul `com.emmanuela.launcher`, datele locale existente, paleta și cele 24 de iconițe originale sunt păstrate; biblioteca are acum 54 de vectori outline.
+**Version:** 2.6.0-beta · **Android:** 8.0/API26 or newer · **License:** MIT
 
-## Deschidere în Android Studio
+## What it does
 
-1. Extrage arhiva și deschide folderul `EmmanueLA`, care conține `settings.gradle.kts`.
-2. Selectează JDK 17 pentru Gradle și instalează Android SDK 35.
-3. Permite sincronizarea dependențelor Gradle. Proiectul folosește Gradle 8.11.1, AGP 8.9.2 și Kotlin 2.1.20.
-4. Rulează `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` sau `gradlew.bat` pe Windows.
-5. APK-ul debug va fi în `app/build/outputs/apk/debug/` dacă build-ul reușește.
+- Independent Home, App List and folders, with an optional Home alphabet and configurable gestures.
+- Ranked app/alias search, tags (`#`), permission-based contacts (`@`), explicit web searches (`/query`), protected folder results and opt-in searchable actions. Actions require a tap and use the same authorization checks as ordinary launches.
+- Password/device-protected folders, manual ordering and built-in clock/date/battery/usage/weather/location widgets. Placement is saved on completed gestures; cancelled movement is discarded.
+- **Live the Moment:** grouped limits, schedules, continuous Strict Block, controlled Breaks, warnings/grace and optional intention prompts. These are self-management tools, not tamper-proof parental controls.
+- Optional notification dismissal/digest with schedules, keywords, Strict Block scope and temporary suppression. Calls, alarms, ongoing and media notifications are preserved. Android channel settings control quiet delivery; a listener cannot undo an alert already played.
 
-**Compilarea nu este confirmată în acest mediu.** Încercarea reală s-a oprit la descărcarea Gradle, cu `UnknownHostException: services.gradle.org`. Nu s-au executat compilatorul Kotlin, Android lint sau testele JUnit și nu este inclus un APK verificat. Verificările structurale ale surselor și XML-urilor au trecut; acestea nu înlocuiesc compilarea. Vezi `docs/VALIDATION.md`.
+## Honest platform limits
 
-## Final touch 2.5.2
+Launcher entry checks and optional accessibility enforcement have different boundaries. Apps can still be opened through other Android surfaces when accessibility enforcement is disabled or restricted. Private Space protects launcher entry points; it does not encrypt or isolate other apps.
 
-Location tap action, GitHub public, bottom controls cu reglaje independente fără Custom, acțiune adaptivă App List/Folders. Vezi `docs/TESTING_FIXES_V252.md` pentru validare și migrare.
+Website blocking is **best-effort visible-address matching**, not a VPN. **Firefox157's tested normal-mode address source is UNSUPPORTED**; the app displays an unreadable-address diagnostic instead of falsely claiming a block. Other browser adapters are not runtime-verified. See the [browser/mode evidence](docs/BROWSER_COMPATIBILITY.md). Selective native Shorts/Reels/feed filtering is unsupported.
 
-## Patch 2.5.1
+## Privacy
 
-Marker cu margine interioară numai pentru selecții, drag de folder într-un overlay peste grid, Hidden/Blocked manager cu switch-uri, callback biometric înregistrat numai la cerere și insets Edge-to-edge unificate. Vezi `docs/TESTING_FIXES_V251.md` pentru limitări și retestare locală.
+No accounts, ads or analytics. Configuration and focus rules stay on the device. Optional contact search and notification keyword matching run locally; message bodies, intentions and browser history are not persisted. Optional weather sends selected coordinates/location queries to Open-Meteo. Android backup is disabled; explicit exports omit nonportable grants and temporary access state. See [permissions and privacy](docs/PRIVACY.md).
 
-## Completări v2.5
+## Install and build
 
-Stil per-widget cu preview, corecție Typeface cursiv/weight, haptics cu fallback și test, ajustări per fotografie, private/hidden apps, reordonare magnetică în folder, Share APK, selecții evidențiate și Settings accesibil din Folders. Vezi `docs/TESTING_FIXES_V25.md` pentru verificări și limite.
+Use only artifacts from the project's [GitHub Releases](https://github.com/sorin-202/EmmanueLA/releases) whose provenance you trust, or build locally. This engineering run does not publish a release. Debug artifacts are development builds; unsigned release APKs require your own signing key before installation.
 
-## Completări v2.4
+Open this repository directory in Android Studio, using JDK17 and Android SDK35. The wrapper uses Gradle8.11.1, AGP8.9.2 and Kotlin2.1.20.
 
-- Stil Home separat, italic/weight corectate, widgeturi cu fundal rotunjit/translucid, preview fix pentru bottom controls și drag/pinch cu un singur commit.
-- Home Alphabet înlocuiește App List: Wave mai amplu, feedback tactil, scroll în aplicațiile unei litere. Toate cele trei pagini pot fi dezactivate separat; ecranul gol păstrează Note to self și accesul la Settings.
-- Căutare după pachet/componentă și `@` contacte cu numele și aplicația sursă; Phone implicit, integrări Android selectabile.
-- Permisiuni cu rutare și stări actualizate, lanterna reală, comutare DND cu accesul necesar, selector pentru Confort digital și weather tap către aplicație sau site.
-- Protecția aplicațiilor din foldere la toate punctele de intrare, fallback PIN pentru Hidden apps, dimensiuni individuale de folder și selecții Layout/Cursor evidențiate.
-- Tranziții orizontale standard; dim/blur numai în Wallpaper preview; texte noi EN/RO.
+```sh
+./gradlew clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+./gradlew :app:assembleRelease :app:bundleRelease
+./gradlew :app:connectedDebugAndroidTest
+```
 
-Vezi `docs/TESTING_FIXES_V24.md` pentru toate cerințele, verificările pe dispozitiv și limitele exacte. **Sursele sunt livrate fără compilare confirmată sau APK verificat.**
+On Windows use `gradlew.bat`. Outputs are under `app/build/outputs/`. Select EmmanueLA in Android's default Home settings after installing. Sensitive permissions are optional and requested for the corresponding feature.
 
-## Completări v2.3
+## Validation and roadmap
 
-- Ierarhia frontend din documentul atașat: selector Language dedicat, subtitluri, preview search 2×2, diagramă Gestures, Action Picker comun grupat și pagini separate pentru Folder assignments / Blocked app.
-- Animația folderelor este conectată. Home Alphabet are stil, animație și haptics independente. În v2.4, Reduce motion dezactivează efectele Home Alphabet; animația sa interactivă rămâne independentă de Motion Off pentru pagini. Motion preview arată două pagini și folosește același easing/viteză ca navigarea.
-- Pauză progresivă, session limit și require-authentication pentru grupuri. Session limit verifică UsageEvents la intrările launcher-ului și programează un singur reminder WorkManager. Nu închide forțat aplicații externe; Android poate amâna reminder-ul.
-- Protecție la atribuirea în foldere cu dialog de deblocare; editorul contextual salvează metadatele și apartenențele atomic.
-- Margini pentru notch, pinch prin graphicsLayer în timpul editării, culori text HEX aplicate și în afara Custom Theme, controale suplimentare traduse în română.
+**BETA READY for controlled testing.** Final clean validation of code checkpoint `056f629` passed **123 JVM tests and all 18 API35 emulator tests**, lint (0 errors, 43 warnings), debug/release APK and release AAB builds. A locally development-signed copy of the minified release passed runtime smoke checks. No production release was published.
 
-## Modificări principale
+See [current validation](docs/VALIDATION.md), [engineering evidence](docs/ENGINEERING_VALIDATION.md), [performance and size measurements](docs/PERFORMANCE.md), and [search behavior](docs/SEARCH.md). The universal release APK is 2,789,120 bytes, down 8.2% from the measured M6 baseline. Emulator search measurements improved; physical frame-rate and battery performance are not certified.
 
-- Setări reorganizate în **General → System / About** și **Your space → Home / App List / Folders / Appearance / Gestures / Apps / Mindful Use / Live the Moment / Private Space**.
-- Modul Standard/Advanced, persistent, comutat prin ◇/◆ fără schimbarea paginii sau resetarea scrollului.
-- Editor dedicat aplicației: alias, taguri, chips pentru eliminarea tagurilor și atribuire în mai multe foldere, salvate într-o singură tranzacție.
-- Cursor real personalizabil, căutare #tag, autolansare configurabilă, iconițe și aliniere opționale în drawer.
-- Aranjarea widgeturilor pe Home complet: drag, pinch, dimensiune, aliniere și eliminare. Wallpaper-ul se ajustează pe tot ecranul, fără câmpuri X/Y/Zoom.
-- Grupuri Live the Moment: pauză explicită înainte de lansare, allowance zilnic comun, program săptămânal, număr de deschideri și autentificare pentru editarea grupurilor stricte.
-- Private Space: hidden/blocked/private, autentificare Android și blocare imediată, după 30 secunde sau la stingerea ecranului.
-- Cod separat în `data`, `platform` și module UI. Componentele Android vechi au adaptoare de compatibilitate.
+### Release screenshots
 
-## Documente și previzualizare
+Actual API35 emulator captures of the minified release:
 
-- `docs/FRONTEND_STRUCTURE.md`: arborele meniurilor și controalele Advanced.
-- `docs/UI_IMPLEMENTATION_MATRIX.md`: corespondența celor 34 de cerințe cu implementarea.
-- `docs/UI_STRUCTURE.md`: arborele proiectului și al meniului, cu comentarii `#`.
-- `docs/ARCHITECTURE.md`: stare, cache-uri, fire de execuție și migrare.
-- `docs/IMPLEMENTATION_STATUS.md`: funcții și limite exacte.
-- `docs/CHANGELOG.md`: modificările față de v2.1.
-- `docs/VALIDATION.md`: ce s-a verificat și verificările necesare pe dispozitiv.
-- `docs/REQUESTED_UI.txt`: specificația frontend primită.
-- `ui/components/VectorPackPreview.kt`: galerie Compose Preview a celor 54 de vectori.
+| Home | App List | Settings |
+|---|---|---|
+| ![Home](docs/images/home.png) | ![App List](docs/images/app-list.png) | ![Settings](docs/images/settings.png) |
 
-Private Space și limitele protejează lansările prin EmmanueLA; nu blochează accesul prin alte suprafețe Android. Filtrarea notificărilor intervine după sosire. Traducerea navigării este disponibilă pentru EN/RO/DE/FR/ES/IT/PL; unele texte detaliate folosesc în continuare fallback englez. Nu se afirmă performanță 60/120 fps fără măsurători pe dispozitiv.
+Contributions should preserve the existing design and data. Start with [CONTRIBUTING](CONTRIBUTING.md), use the issue templates for reproducible problems, and read [SECURITY](SECURITY.md). Remaining acceptance requires physical devices/OEMs, biometrics, haptics, battery and high-refresh displays. Remote CI and production signing/publication remain unexecuted. Earlier delivery notes are preserved in [history](docs/history/README-delivered.md).
+
+Licensed under [MIT](LICENSE). The logo above reproduces the application's existing vector icon.

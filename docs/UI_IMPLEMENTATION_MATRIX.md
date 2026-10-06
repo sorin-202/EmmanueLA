@@ -1,3 +1,5 @@
+> Historical delivery notes. For current executed evidence and limitations, see [VALIDATION.md](VALIDATION.md) and [ENGINEERING_VALIDATION.md](ENGINEERING_VALIDATION.md). These notes are not the current task list.
+
 # Corespondența structurii frontend v2.3
 
 Acest tabel verifică existența implementării în surse. Nu certifică runtime-ul sau FPS. Limitările Android și traducerile parțiale sunt descrise în IMPLEMENTATION_STATUS.md.

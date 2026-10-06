@@ -175,7 +175,7 @@ EmmanueLA/ # Android Studio project root #
   docs/ # Project directory #
     ARCHITECTURE.md # Documentation #
     CHANGELOG.md # Documentation #
-    DELIVERY_MANIFEST.json # Structured configuration / delivery metadata #
+    history/DELIVERY_MANIFEST-delivered.json # Historical delivery metadata #
     FRONTEND_STRUCTURE.md # Documentation #
     IMPLEMENTATION_STATUS.md # Documentation #
     IMPLEMENTATION_UPDATES.md # Documentation #
@@ -189,8 +189,6 @@ EmmanueLA/ # Android Studio project root #
     UI_STRUCTURE.md # Documentation #
     UPGRADE_V26.md # Documentation #
     VALIDATION.md # Documentation #
-    build_attempt.log # Project asset / configuration #
-    build_attempt_v26.log # Project asset / configuration #
     history/ # Project directory #
       CHANGES_REQUESTED_2026-09-30.md # Documentation #
       DEVICE_CHECKLIST.md # Documentation #

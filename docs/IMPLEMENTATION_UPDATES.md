@@ -1,3 +1,5 @@
+> Historical delivery notes. For current executed evidence and limitations, see [VALIDATION.md](VALIDATION.md) and [ENGINEERING_VALIDATION.md](ENGINEERING_VALIDATION.md). These notes are not the current task list.
+
 # EmmanueLA v2 — implementation map
 
 These changes extend the existing EMA repository. Source is under `app/src/main/java/com/emmanuela/launcher`.

@@ -1,3 +1,5 @@
+> Historical delivery notes. For current executed evidence and limitations, see [VALIDATION.md](VALIDATION.md) and [ENGINEERING_VALIDATION.md](ENGINEERING_VALIDATION.md). These notes are not the current task list.
+
 ## Stare 2.5.2
 
 Final touch implementat în surse. PASS structural; Gradle/lint/JUnit/instrumentare/telefon NOT RUN. Vezi TESTING_FIXES_V252.md.

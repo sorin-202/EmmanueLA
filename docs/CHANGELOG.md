@@ -1,3 +1,5 @@
+> Historical delivery notes. For current executed evidence and limitations, see [VALIDATION.md](VALIDATION.md) and [ENGINEERING_VALIDATION.md](ENGINEERING_VALIDATION.md). These notes are not the current task list.
+
 # 2.6.0-beta
 
 Focus quotas/windows and event-driven external enforcement; app/site/URL-keyword rules; Tree Branch drawer; dense variable-span folders; private-entry and folder device authentication; additional clock formats; notification rule refresh; contact deduplication. See UPGRADE_V26.md for limitations and validation status.
