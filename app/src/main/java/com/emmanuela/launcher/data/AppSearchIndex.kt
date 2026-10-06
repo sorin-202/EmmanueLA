@@ -4,7 +4,10 @@ package com.emmanuela.launcher.data
 class AppSearchIndex(apps: List<LaunchableApp>, hiddenPackages:Set<String> = emptySet(), hideFromSearch:Boolean=true) {
     private val catalog=AlphabetIndex.build(apps.filter{!hideFromSearch||it.packageName !in hiddenPackages})
     val all = AlphabetIndex.build(apps.filter{it.packageName !in hiddenPackages})
-    private val names = catalog.apps.map { listOf(it.label, it.originalLabel, it.packageName, it.id).map(SearchRanking::folded) }
+    private val names = catalog.apps.map { listOf(it.label, it.originalLabel, it.packageName, it.id).map{value->SearchRanking.Name(SearchRanking.folded(value))} }
+    private val labels=names.map{it.take(2)}
+    private val originals=names.map{listOf(it[1])}
+    private val originalAndPackages=names.map{it.drop(1)}
     private val tagged = catalog.apps.indices.filter { catalog.apps[it].tags.isNotEmpty() }.toSet()
     private val inverted: Map<String, Set<Int>> = run {
         val result = mutableMapOf<String, MutableSet<Int>>()
@@ -34,11 +37,10 @@ class AppSearchIndex(apps: List<LaunchableApp>, hiddenPackages:Set<String> = emp
             }
             catalog.apps.filterIndexed { i, _ -> i in matches }
         } else {
-            val text = SearchRanking.folded(tokens.joinToString(" "))
+            val queryText = SearchRanking.Query(SearchRanking.folded(tokens.joinToString(" ")))
             val ranked = catalog.apps.indices.mapNotNull { index ->
-                val labels = if (searchAliases) names[index].take(2) else listOf(names[index][1])
-                val rank = SearchRanking.score(text, labels)
-                    ?: if (searchPackages) SearchRanking.score(text, labels + names[index].drop(2))?.plus(4) else null
+                val rank = SearchRanking.score(queryText,if(searchAliases)labels[index]else originals[index])
+                    ?: if (searchPackages) SearchRanking.score(queryText,if(searchAliases)names[index]else originalAndPackages[index])?.plus(4) else null
                 rank?.let { index to it }
             }.sortedBy { it.second }.map { catalog.apps[it.first] }
             // Keep relevance order; alphabetic sections are only navigation metadata.

@@ -151,7 +151,7 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
             }) { Text("#$tag") } }
         }
     }
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = home, modifier = Modifier.semantics { contentDescription = "Home" }) { Text(localized("⌂"), fontSize = 25.sp) }
             Text(localized("All Apps"), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))

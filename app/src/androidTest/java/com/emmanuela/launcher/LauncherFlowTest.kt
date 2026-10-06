@@ -308,12 +308,49 @@ class LauncherFlowTest {
             }
         }finally{repository.restore(original)}
     }
-    @Test fun appListWebIntentAndControlledBreakWorkflowRender()=runBlocking {
+    @Test fun fixedNavigationControlsStayAboveSystemNavigation()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
         try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false)))))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                find("All Apps")
+                var safeBottom=0
+                scenario.onActivity { activity ->
+                    val decor=activity.window.decorView
+                    val insets=androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+                    assertNotNull("Platform window insets available",insets)
+                    val origin=IntArray(2);decor.getLocationOnScreen(origin)
+                    safeBottom=origin[1]+decor.height-insets!!.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars()).bottom
+                }
+                fun assertSafeControl(label:String) {
+                    var node=find(label)
+                    while(!node.isClickable&&node.parent!=null)node=node.parent
+                    val bounds=android.graphics.Rect();node.getBoundsInScreen(bounds)
+                    assertTrue("$label bounds $bounds must end above system navigation at $safeBottom",bounds.bottom<=safeBottom)
+                }
+                click("All Apps")
+                assertSafeControl("Hidden Apps")
+                assertSafeControl("Organized Folders →")
+                click("Organized Folders →")
+                assertSafeControl("All Apps →")
+                click("All Apps →")
+                find("All Apps")
+            }
+        }finally{repository.restore(original)}
+    }
+    @Test fun appListWebIntentAndControlledBreakWorkflowRender()=runBlocking {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        var observer:kotlinx.coroutines.Job?=null
+        try {
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false))),
                 focusGroups=listOf(FocusGroup(id="flow",name="Test Focus",packages=setOf("com.android.camera2"),dailyMinutes=0,pause=false,blockAlways=true))))
+            // Observe before the click, as in the widget/editor tests: a cold
+            // DataStore 1.1.7 subscription racing a write can miss its emission.
+            observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use {
                 click("All Apps")
                 find("All Apps")
@@ -326,13 +363,14 @@ class LauncherFlowTest {
                 click("Test Focus",scroll=true)
                 click("Take a Break",scroll=true)
                 click("Start 10-minute Break")
-                kotlinx.coroutines.withTimeout(15_000){repository.data.first{it.focusGroups.single().breakUntil>System.currentTimeMillis()}}
+                kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil>System.currentTimeMillis()}}
                 find("End Break",scroll=true)
                 assertTrue(repository.data.first().focusGroups.single().breakUntil>System.currentTimeMillis())
                 click("End Break")
                 find("Take a Break")
+                kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil==0L}}
                 assertEquals(0L,repository.data.first().focusGroups.single().breakUntil)
             }
-        }finally{repository.restore(original)}
+        }finally{observer?.cancel();repository.restore(original)}
     }
 }

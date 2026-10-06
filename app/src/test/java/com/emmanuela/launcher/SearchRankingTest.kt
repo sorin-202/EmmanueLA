@@ -32,4 +32,14 @@ class SearchRankingTest {
         val data=LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(searchPackages=true))))
         assertTrue(ConfigurationCodec.decode(ConfigurationCodec.encode(data)).settings.ui.experience.searchPackages)
     }
+    @Test fun preparedIndexPreservesCrossFieldMatchingAndAliasOptOut() {
+        val app=LaunchableApp("org.calendar/.Main","Daily Agenda","org.calendar","Planner")
+        val index=AppSearchIndex(listOf(app))
+        assertEquals(listOf(app),index.search("daily planner").apps)
+        assertTrue(index.search("daily planner",searchAliases=false).apps.isEmpty())
+        assertEquals(listOf(app),index.search("planner calendar",searchAliases=false,searchPackages=true).apps)
+        assertTrue(index.search("daily calendar",searchAliases=false,searchPackages=true).apps.isEmpty())
+        assertTrue(index.search("planner calendar",searchPackages=false).apps.isEmpty())
+        assertNull(SearchRanking.score("\u2003",listOf("\u2003")))
+    }
 }

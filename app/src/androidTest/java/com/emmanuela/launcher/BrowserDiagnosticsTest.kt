@@ -44,7 +44,20 @@ class BrowserDiagnosticsTest {
             automation.dropShellPermissionIdentity()
             waitFor("accessibility connected"){EnforcementBridge.connected}
             target.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://example.com")).setPackage("org.mozilla.firefox").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            waitFor("actual Firefox window"){automation.rootInActiveWindow?.packageName?.toString()=="org.mozilla.firefox"}
+            waitFor("actual Firefox window"){
+                val rootPackage=automation.rootInActiveWindow?.packageName?.toString()
+                // Firefox continuous onboarding can cover the browser with Android's
+                // default-browser role dialog even after first-run onboarding completed.
+                // Dismiss that exact system prompt without changing the default browser.
+                if(rootPackage=="com.android.permissioncontroller" &&
+                    shell("dumpsys activity activities").lineSequence().any {
+                        it.contains("topResumedActivity") && it.contains(".role.ui.RequestRoleActivity")
+                    }) {
+                    android.util.Log.i("BrowserFixture","Dismissing default-browser role prompt")
+                    shell("input keyevent KEYCODE_BACK")
+                }
+                rootPackage=="org.mozilla.firefox"
+            }
             waitFor("unreadable address reported"){EnforcementBridge.status.value.let{it.browserPackage=="org.mozilla.firefox"&&it.addressReadable==false&&it.issue!=null}}
             // Firefox 157's display bar exposes a localized description, not a plain URL.
             // Do not misrepresent this as a successful website block.

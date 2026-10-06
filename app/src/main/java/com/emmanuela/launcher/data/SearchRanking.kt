@@ -4,13 +4,18 @@ package com.emmanuela.launcher.data
 object SearchRanking {
     private val words = Regex("[^\\p{L}\\p{N}]+")
     private val marks = Regex("\\p{M}+")
+    private val whitespace = Regex("\\s+")
+    class Query(val text:String) { val tokens=if(text.isBlank())emptyList()else text.split(whitespace).filter(String::isNotEmpty) }
+    class Name(val text:String) { val tokens=text.split(words) }
     fun folded(value: String): String = java.text.Normalizer.normalize(AppNaming.folded(value), java.text.Normalizer.Form.NFD).replace(marks, "")
     fun score(query: String, names: List<String>): Int? {
-        if (query.isBlank()) return null
-        if (names.any { it == query }) return 0
-        if (names.any { it.startsWith(query) }) return 1
-        val tokens = query.split(Regex("\\s+")).filter(String::isNotEmpty)
-        if (tokens.all { token -> names.any { name -> name.split(words).any { it.startsWith(token) } } }) return 2
-        return if (tokens.all { token -> names.any { token in it } }) 3 else null
+        return score(Query(query),names.map(::Name))
+    }
+    fun score(query:Query,names:List<Name>):Int? {
+        if(query.tokens.isEmpty())return null
+        if(names.any{it.text==query.text})return 0
+        if(names.any{it.text.startsWith(query.text)})return 1
+        if(query.tokens.all{token->names.any{name->name.tokens.any{it.startsWith(token)}}})return 2
+        return if(query.tokens.all{token->names.any{token in it.text}})3 else null
     }
 }

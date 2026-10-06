@@ -71,7 +71,7 @@ import kotlin.math.abs
 @Composable
 fun FoldersScreen(data: LauncherData, home: () -> Unit, shuffle: () -> Unit, open: (String) -> Unit, create: () -> Unit, place: (String, Int, Boolean) -> Unit,settings:()->Unit,densePlace:(String,Int,Int)->Unit) {
     val p = data.settings
-    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 20.dp)) {
         Header("Organized Folders", home) { TextButton(onClick = create, modifier = Modifier.semantics { contentDescription = "New folder" }) { Text(localized("+"), fontSize = 30.sp) } }
         if (data.folders.isEmpty()) Column(Modifier.padding(top = 80.dp)) {
             Text(localized("A place for everything."), style = MaterialTheme.typography.headlineSmall)
