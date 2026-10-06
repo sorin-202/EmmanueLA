@@ -55,6 +55,9 @@ fun Modifier.launcherGestures(
                 val began = down.uptimeMillis
                 try { while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
+                    // Android cancellation arrives as consumed pointer-up changes.
+                    // Never navigate after cancellation or another recognizer's claim.
+                    if(event.changes.any{it.isConsumed})return@awaitEachGesture
                     if (event.changes.count { it.pressed } > 1) return@awaitEachGesture
                     val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
                     delta = change.position - down.position

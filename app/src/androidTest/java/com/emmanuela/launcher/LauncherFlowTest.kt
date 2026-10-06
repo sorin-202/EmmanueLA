@@ -27,7 +27,11 @@ class LauncherFlowTest {
         while(SystemClock.uptimeMillis()<deadline){
             val tree=nodes(instrumentation.uiAutomation.rootInActiveWindow)
             tree.firstOrNull{it.isVisibleToUser&&(match?.invoke(it) ?: (it.text?.toString()==label||it.contentDescription?.toString()==label))}?.let{return it}
-            if(scroll&&SystemClock.uptimeMillis()>=nextScroll){tree.firstOrNull{it.isScrollable}?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);nextScroll=SystemClock.uptimeMillis()+1000}
+            if(scroll&&SystemClock.uptimeMillis()>=nextScroll){
+                // Reach items in nested lists before advancing an enclosing settings page.
+                tree.asReversed().firstOrNull{it.isScrollable&&it.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)}
+                nextScroll=SystemClock.uptimeMillis()+1000
+            }
             SystemClock.sleep(100)
         }
         throw AssertionError("Visible control not found: $label. Visible text: " + nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}.mapNotNull{it.text?.toString()}.joinToString(" | "))
@@ -184,6 +188,82 @@ class LauncherFlowTest {
                 kotlinx.coroutines.withTimeout(15_000){repository.data.first{"clock" in it.settings.ui.experience.searchActions}}
             }
         }finally{repository.restore(original)}
+    }
+    @Test fun homeAndDrawerSwipesRespectDirectionAndCancellation()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        try {
+            repository.restore(LauncherData(settings=Preferences(showClock=false,showDate=false,showBattery=false,favoriteCount=0,ui=UiPreferences(bottomShortcuts=false,experience=ExperiencePreferences(language="en",autoLaunch=false)))))
+            ActivityScenario.launch(MainActivity::class.java).use {
+                center(find("Launcher settings"))
+                val screen=android.graphics.Rect().also{instrumentation.uiAutomation.rootInActiveWindow!!.getBoundsInScreen(it)}
+                fun point(x:Float,y:Float)=android.graphics.PointF(screen.left+screen.width()*x,screen.top+screen.height()*y)
+                drag(point(.5f,.65f),point(.5f,.3f),hold=0,cancel=true)
+                center(find("Launcher settings"))
+                assertFalse("Cancelled swipe stays Home",nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.className?.toString()=="android.widget.EditText"})
+                drag(point(.5f,.65f),point(.5f,.3f),hold=0)
+                center(find("Search",match={it.className?.toString()=="android.widget.EditText"}))
+                drag(point(.8f,.55f),point(.2f,.55f),hold=0)
+                center(find("Organized Folders"))
+                drag(point(.2f,.55f),point(.8f,.55f),hold=0)
+                center(find("Launcher settings"))
+                assertFalse(nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.className?.toString()=="android.widget.EditText"})
+            }
+        }finally{repository.restore(original)}
+    }
+    @Test fun manualFolderAppReorderPersistsAfterRelease()=runBlocking<Unit> {
+        val target=instrumentation.targetContext
+        val repository=ConfigurationRepository(target)
+        val original=repository.data.first()
+        val catalog=target.packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER),0)
+            .filter{it.activityInfo.packageName!=target.packageName}.distinctBy{android.content.ComponentName(it.activityInfo.packageName,it.activityInfo.name).flattenToString()}
+        val ids=catalog.map{android.content.ComponentName(it.activityInfo.packageName,it.activityInfo.name).flattenToString()}
+        assertTrue("Scrollable installed-app fixture",ids.size>=8)
+        val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        var observer:kotlinx.coroutines.Job?=null
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false))),folders=listOf(AppFolder("manual","Manual apps","apps",ids,layout="Text",manualOrder=true))))
+            observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                click("All Apps");click("Organized Folders →");click("Manual apps");click("Arrange apps")
+                val from=center(find(catalog[0].loadLabel(target.packageManager).toString()))
+                val to=center(find(catalog[1].loadLabel(target.packageManager).toString()))
+                drag(from,to){assertEquals(ids,runBlocking{repository.data.first().folders.single().apps})}
+                val reordered=listOf(ids[1],ids[0])+ids.drop(2)
+                kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.folders.single().apps==reordered}}
+                click("Done");scenario.recreate()
+                assertEquals(reordered,repository.data.first().folders.single().apps)
+            }
+        }finally{observer?.cancel();repository.restore(original)}
+    }
+    @Test fun notificationEditorSavesScheduleKeywordsAndTemporarySuppression()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        var observer:kotlinx.coroutines.Job?=null
+        suspend fun saved(predicate:(AppPolicy)->Boolean)=kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.policies["com.android.settings"]?.let(predicate)==true}}
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false)))))
+            observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                click("Launcher settings");click("Apps",scroll=true);click("Notifications");click("Settings",scroll=true)
+                click("Delivery");click("DISMISS");click("Apply rule",scroll=true);click("Schedule")
+                val keywords=find("Keywords",scroll=true,match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(keywords.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"urgent\nmeeting")}))
+                click("Save notification rule",scroll=true)
+                saved{it.notifications==NotificationMode.DISMISS&&it.notificationRule.scope==NotificationScope.SCHEDULE&&it.notificationRule.keywords==setOf("urgent","meeting")}
+                click("Suppress for 30 minutes",scroll=true)
+                saved{it.notificationRule.suppressUntil>System.currentTimeMillis()}
+                click("End suppression",scroll=true)
+                saved{it.notificationRule.suppressUntil==0L}
+                scenario.recreate()
+                val policy=repository.data.first().policies.getValue("com.android.settings")
+                assertEquals(NotificationMode.DISMISS,policy.notifications)
+                assertEquals(setOf("urgent","meeting"),policy.notificationRule.keywords)
+            }
+        }finally{observer?.cancel();repository.restore(original)}
     }
     @Test fun applicationSearchActionCannotBypassBlockedPolicy()=runBlocking<Unit> {
         val target=instrumentation.targetContext
