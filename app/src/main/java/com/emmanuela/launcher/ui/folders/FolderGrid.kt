@@ -76,15 +76,16 @@ fun EditableFolderGrid(data:LauncherData,modifier:Modifier,open:(String)->Unit,p
                 val target=bounds.entries.filter{it.key!=from&&it.value.inflate(snap).contains(point)}.minByOrNull{(it.value.center-point).getDistance()}
                 val destination=target?.value?.topLeft?:origin.topLeft
                 val start=delta
+                settling=true
                 scope.launch{
-                    dropOffset.snapTo(start);settling=true
+                    dropOffset.snapTo(start)
                     dropOffset.animateTo(destination-origin.topLeft,tween(if(p.ui.experience.folderAnimation=="Off"||p.ui.experience.reduceMotion)0 else 140))
                     if(target!=null){pendingCell=target.key;currentPlace(folder.id,target.key,freeform);delay(1500);if(dragged?.id==folder.id)clear()}else clear()
                 }
             }
         })
     }){
-        LazyVerticalGrid(columns,modifier=Modifier.fillMaxSize(),contentPadding=PaddingValues(vertical=16.dp),horizontalArrangement=Arrangement.spacedBy(p.ui.experience.folderSpacing.dp),verticalArrangement=Arrangement.spacedBy(p.ui.experience.folderSpacing.dp)){
+        LazyVerticalGrid(columns,modifier=Modifier.fillMaxSize(),userScrollEnabled=dragged==null||settling,contentPadding=PaddingValues(vertical=16.dp),horizontalArrangement=Arrangement.spacedBy(p.ui.experience.folderSpacing.dp),verticalArrangement=Arrangement.spacedBy(p.ui.experience.folderSpacing.dp)){
             items(count,key={occupied[it]?.id?:"empty:$it"}){cell->
                 val folder=occupied[cell]
                 DisposableEffect(cell,folder?.id){onDispose{bounds.remove(cell)}}

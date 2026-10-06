@@ -237,7 +237,8 @@ fun LauncherApp(model: LauncherViewModel, homeEpoch: Int, now: Long, battery: In
                 } else {
                     LauncherSurfaceHost(surface, direction, data.settings.ui.v2.gesturesEnabled && overlay.isEmpty() && editor == null && appEditor == null && appMenu == null && policyPackages.isEmpty() && folderUnlock == null && quickAddApp == null,
                         { gesture -> action(when (gesture) { "up" -> data.settings.swipeUp; "down" -> data.settings.swipeDown; "left" -> data.settings.swipeLeft; else -> data.settings.swipeRight }) },
-                        { target, motion -> navigate(target, motion) }, data.settings.ui.experience) { current, settled ->
+                        { target, motion -> navigate(target, motion) }, data.settings.ui.experience,
+                        modifier=if(overlay.isNotEmpty())Modifier.clearAndSetSemantics{}else Modifier) { current, settled ->
                         when (current) {
                             LauncherSurface.BLANK -> BlankScreen(data,model){overlay="settings"}
                             LauncherSurface.HOME -> HomeScreen(data, visibleApps, model, now, battery, ::action,

@@ -98,19 +98,36 @@ fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,a
             val drag=if(arranging)Modifier.pointerInput(id,v.widgetGrid,width,height){
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed=false)
+                    val startPoint=point
+                    val startScale=scale
+                    var completed=false
                     dragging=true
                     var moved=false
                     try{
                     do {
                         val event=awaitPointerEvent()
+                        // Compose represents ACTION_CANCEL as consumed pointer-up changes.
+                        // Also yield if another recognizer has taken this gesture.
+                        if(event.changes.any{it.isConsumed})return@awaitEachGesture
                         val pan=event.calculatePan();val zoom=event.calculateZoom()
                         if(pan.getDistance()>0f || zoom!=1f){moved=true;event.changes.forEach{it.consume()}
                             point=Offset((point.x+pan.x/density.density).coerceIn(0f,(width-24f).coerceAtLeast(0f)),(point.y+pan.y/density.density).coerceIn(0f,(height-24f).coerceAtLeast(0f)))
                             scale=(scale*zoom).coerceIn(.5f,2f)
                         }
                     }while(event.changes.any{it.pressed})
-                    if(moved){val grid=v.widgetGrid.toFloat();point=Offset(((point.x/grid).roundToInt()*grid).coerceIn(0f,latestMaxX),((point.y/grid).roundToInt()*grid).coerceIn(0f,latestMaxY));val finalPoint=WidgetPlacement(point.x,point.y);val finalScale=scale;model.uiSettings{ui->ui.copy(v2=ui.v2.copy(widgetPositions=ui.v2.widgetPositions+(id to finalPoint)),experience=ui.experience.copy(widgetScales=ui.experience.widgetScales+(id to finalScale)))}}else options=true
-                    }finally{dragging=false}
+                    if(moved){
+                        val grid=v.widgetGrid.toFloat()
+                        point=Offset(((point.x/grid).roundToInt()*grid).coerceIn(0f,latestMaxX),((point.y/grid).roundToInt()*grid).coerceIn(0f,latestMaxY))
+                        if(point!=startPoint || scale!=startScale){
+                            val finalPoint=WidgetPlacement(point.x,point.y);val finalScale=scale
+                            model.uiSettings{ui->ui.copy(v2=ui.v2.copy(widgetPositions=ui.v2.widgetPositions+(id to finalPoint)),experience=ui.experience.copy(widgetScales=ui.experience.widgetScales+(id to finalScale)))}
+                        }
+                    }else options=true
+                    completed=true
+                    }finally{
+                        if(!completed){point=startPoint;scale=startScale}
+                        dragging=false
+                    }
                 }
             }else Modifier.homeClick(id,{action(target)},{if(v.gesturesEnabled)action(v.holdAction)})
             if(options)AlertDialog(onDismissRequest={options=false},title={Text(widgetName(id))},text={Column{
@@ -121,7 +138,7 @@ fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,a
             }},confirmButton={TextButton(onClick={options=false}){Text(localized("Done"))}})
 
             val widgetModifier=Modifier.onSizeChanged{measured=it}
-                    .graphicsLayer { transformOrigin=androidx.compose.ui.graphics.TransformOrigin(0f,0f);scaleX=if(arranging)scale/savedScale else 1f;scaleY=scaleX;translationX = with(density) { point.x.coerceIn(0f,maxX).dp.toPx() }; translationY = with(density) { point.y.coerceIn(0f,maxY).dp.toPx() } }
+                    .graphicsLayer { transformOrigin=androidx.compose.ui.graphics.TransformOrigin(0f,0f);scaleX=if(arranging)scale/savedScale else 1f;scaleY=scaleX;translationX=with(density){point.x.coerceIn(0f,maxX).dp.toPx()};translationY=with(density){point.y.coerceIn(0f,maxY).dp.toPx()} }
                     .then(drag).widgetBackground(appearance)
                     .then(if(arranging)Modifier.border(1.dp,MaterialTheme.colorScheme.outline)else Modifier).padding(8.dp)
             val textStyle=widgetTextStyle(data,id,if(arranging)savedScale else scale)

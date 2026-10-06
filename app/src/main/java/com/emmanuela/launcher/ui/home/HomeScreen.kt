@@ -118,13 +118,14 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
     val regions = LocalGestureRegions.current
     DisposableEffect(taps, regions) { regions.onClaim = taps::cancel; onDispose { taps.cancel(); regions.onClaim = {} } }
     CompositionLocalProvider(LocalHomeTapRouter provides taps) {
-        Box(Modifier.fillMaxSize().homeClick("Home", {}, { if(latestPrefs.ui.v2.gesturesEnabled) latestAction(latestPrefs.ui.v2.holdAction) })) {
+        // The arrangement preview owns empty-space taps without exposing a fake Home action.
+        Box(Modifier.fillMaxSize().then(if(arranging)Modifier.pointerInput(Unit){detectTapGestures{}} else Modifier.homeClick("Home", {}, { if(latestPrefs.ui.v2.gesturesEnabled) latestAction(latestPrefs.ui.v2.holdAction) }))) {
             image?.let { val style=p.styleForPhoto(photo);WallpaperLayer(it,u.v2.copy(cropX=style.x,cropY=style.y,cropZoom=style.zoom),style.blur,style.dim,Modifier.fillMaxSize(),style.fit) }
             val baseColor = if(u.experience.textColor!=0L)Color(u.experience.textColor).copy(alpha=u.experience.textOpacity)else if (image != null) Color.White.copy(alpha=u.experience.textOpacity) else MaterialTheme.colorScheme.onBackground
             val textColor = if (u.widgetColor != 0L) Color(u.widgetColor) else baseColor
             val family = when (u.widgetFont) { "Sans" -> FontFamily.SansSerif; "Serif" -> FontFamily.Serif; "Monospace" -> FontFamily.Monospace; else -> MaterialTheme.typography.bodyLarge.fontFamily }
             CompositionLocalProvider(LocalContentColor provides baseColor) {
-                Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp)) {
+                Column(Modifier.fillMaxSize().then(if(arranging)Modifier.clearAndSetSemantics{}else Modifier).padding(horizontal = 24.dp, vertical = 12.dp)) {
                     Spacer(Modifier.weight(1f))
                     val align = when (p.alignment) { "Left" -> Alignment.Start; "Center" -> Alignment.CenterHorizontally; else -> Alignment.End }
                     val visible = data.favorites.filter { data.policies[it.id.substringBefore('/')]?.hidden != true }.take(p.favoriteCount)
@@ -164,4 +165,3 @@ private fun BottomShortcut(mode:String,vector:String,label:String,color:Color,te
         if(mode=="Icon") VectorSymbol(vector,color,Modifier.size((28f * textScale).dp)) else Text(label,color=color,fontSize=(14f * textScale).sp,fontWeight=fontWeight,maxLines=1,overflow=TextOverflow.Ellipsis)
     }
 }
-

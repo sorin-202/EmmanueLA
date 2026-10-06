@@ -9,6 +9,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.emmanuela.launcher.data.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,6 +46,121 @@ class LauncherFlowTest {
         while(node!=null&&!node.isClickable)node=node.parent
         assertTrue("Clickable control: $label",node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)==true)
         instrumentation.waitForIdleSync()
+    }
+    private fun drag(from:android.graphics.PointF,to:android.graphics.PointF,hold:Long=650,cancel:Boolean=false,beforeRelease:()->Unit={}) {
+        val down=SystemClock.uptimeMillis()
+        fun event(action:Int,x:Float,y:Float){
+            val pointer=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+            val coordinates=android.view.MotionEvent.PointerCoords().apply{this.x=x;this.y=y;pressure=1f;size=1f}
+            val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(pointer),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+            try{assertTrue(instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+        }
+        event(android.view.MotionEvent.ACTION_DOWN,from.x,from.y)
+        SystemClock.sleep(hold)
+        for(step in 1..20){val amount=step/20f;event(android.view.MotionEvent.ACTION_MOVE,from.x+(to.x-from.x)*amount,from.y+(to.y-from.y)*amount);SystemClock.sleep(16)}
+        beforeRelease()
+        event(if(cancel)android.view.MotionEvent.ACTION_CANCEL else android.view.MotionEvent.ACTION_UP,to.x,to.y)
+    }
+    private fun center(node:AccessibilityNodeInfo):android.graphics.PointF {
+        val bounds=android.graphics.Rect();node.getBoundsInScreen(bounds)
+        var stable=0
+        val deadline=SystemClock.uptimeMillis()+5000
+        while(stable<3&&SystemClock.uptimeMillis()<deadline){
+            SystemClock.sleep(100);assertTrue(node.refresh())
+            val next=android.graphics.Rect();node.getBoundsInScreen(next)
+            stable=if(next==bounds)stable+1 else 0;bounds.set(next)
+        }
+        assertEquals("Control must settle before touch injection",3,stable)
+        return android.graphics.PointF(bounds.exactCenterX(),bounds.exactCenterY())
+    }
+    @Test fun folderDragCommitsOnReleaseAndSurvivesRecreation()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(folderLayout="List",experience=ExperiencePreferences(language="en",autoLaunch=false))),
+                folders=listOf(AppFolder("a","Alpha folder","apps",emptyList()),AppFolder("b","Beta folder","apps",emptyList()),AppFolder("c","Gamma folder","apps",emptyList()),AppFolder("d","Delta folder","apps",emptyList()))))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                click("All Apps");click("Organized Folders →")
+                drag(center(find("Alpha folder")),center(find("Beta folder")),cancel=true)
+                assertEquals(listOf("a","b","c","d"),repository.data.first().folders.map{it.id})
+                val scroll=find("Folder grid scroll after cancellation",match={it.isScrollable})
+                assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))
+                find("Delta folder")
+                assertTrue(scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD))
+                val from=center(find("Alpha folder"));val to=center(find("Beta folder"))
+                drag(from,to){
+                    assertEquals(listOf("a","b","c","d"),runBlocking{repository.data.first().folders.map{it.id}})
+                }
+                assertNotNull("Drag $from to $to; visible: "+nodes(instrumentation.uiAutomation.rootInActiveWindow).mapNotNull{it.text},kotlinx.coroutines.withTimeoutOrNull(15_000){repository.data.first{it.folders.map{it.id}==listOf("b","a","c","d")}})
+                find("Delta folder",scroll=true)
+                scenario.recreate()
+                assertEquals(listOf("b","a","c","d"),ConfigurationRepository(instrumentation.targetContext).data.first().folders.map{it.id})
+            }
+        }finally{repository.restore(original)}
+    }
+    @Test fun folderSearchRequiresPasswordBeforeOpening()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        val password=FolderPassword.create("test-only-password")
+        try {
+            repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false))),
+                folders=listOf(AppFolder("vault","Vault","apps",emptyList(),passwordSalt=password.first,passwordHash=password.second,biometricUnlock=false))))
+            ActivityScenario.launch(MainActivity::class.java).use {
+                click("All Apps")
+                val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Vault")}))
+                click("▦ Vault");find("Unlock folder")
+                val input=find("Password",match={it.className?.toString()=="android.widget.EditText"})
+                assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"test-only-password")}))
+                click("Unlock");find("Vault")
+                assertFalse(ConfigurationCodec.encode(repository.data.first()).contains("test-only-password"))
+            }
+        }finally{repository.restore(original)}
+    }
+    @Test fun consecutiveWidgetDragsPersistOnlyCompletedMovement()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        // Keep one observer for the interaction. DataStore 1.1.7 can miss a write
+        // when a new cold collector starts concurrently (Android issue 431787506).
+        val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        val placements=java.util.Collections.synchronizedList(mutableListOf<WidgetPlacement?>())
+        var observer:kotlinx.coroutines.Job?=null
+        try {
+            repository.restore(LauncherData(settings=Preferences(showDate=false,showBattery=false,ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false)))))
+            observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{placements.add(it.settings.ui.v2.widgetPositions["clock"]);observed.value=it}}
+            kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                click("Launcher settings");click("Home",match={it.text?.toString()=="Home"});click("Arrange widgets",scroll=true)
+                fun clock()=center(find("Clock",match={it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}"))==true}))
+                clock()
+                assertEquals("Only the arrangement clock is exposed",1,nodes(instrumentation.uiAutomation.rootInActiveWindow).count{it.isVisibleToUser&&it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}"))==true})
+                assertFalse("Preview Home controls are not interactive",nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.isVisibleToUser&&it.contentDescription?.toString()=="Launcher settings"})
+                var previous:WidgetPlacement?=null
+                for(distance in listOf(90f,70f,-60f,50f)){
+                    val from=clock()
+                    val count=placements.size
+                    drag(from,android.graphics.PointF(from.x,from.y+distance),hold=100){
+                        assertEquals("No configuration emission while moving",count,placements.size)
+                        assertEquals(previous,runBlocking{repository.data.first().settings.ui.v2.widgetPositions["clock"]})
+                    }
+                    val saved=kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.settings.ui.v2.widgetPositions["clock"]!=previous}}.settings.ui.v2.widgetPositions.getValue("clock")
+                    assertTrue("Placement follows drag direction",previous==null || (saved.y-previous.y)*distance>0)
+                    assertEquals("One completed placement",count+1,placements.size)
+                    previous=saved
+                }
+                val finalCenter=clock()
+                val count=placements.size
+                drag(finalCenter,android.graphics.PointF(finalCenter.x,finalCenter.y-40),hold=100,cancel=true)
+                assertEquals("Cancelled drag restores placement",finalCenter,clock())
+                assertEquals("Cancelled drag does not save",count,placements.size)
+                click("Done")
+                click("Arrange widgets",scroll=true)
+                assertEquals(finalCenter,clock())
+                assertEquals(previous,repository.data.first().settings.ui.v2.widgetPositions["clock"])
+                scenario.recreate()
+                assertEquals(previous,ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.v2.widgetPositions["clock"])
+            }
+        }finally{observer?.cancel();repository.restore(original)}
     }
     @Test fun configuredSearchActionRequiresTapAndCanBeRemoved()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)

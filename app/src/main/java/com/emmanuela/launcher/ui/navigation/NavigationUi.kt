@@ -35,6 +35,7 @@ fun LauncherSurfaceHost(
     homeGesture: (String) -> Unit,
     navigate: (LauncherSurface, Int) -> Unit,
     experience: ExperiencePreferences = ExperiencePreferences(),
+    modifier: Modifier = Modifier,
     content: @Composable (LauncherSurface, Boolean) -> Unit
 ) {
     val transition = updateTransition(surface, label = "Launcher navigation")
@@ -54,7 +55,7 @@ fun LauncherSurfaceHost(
     }
     CompositionLocalProvider(LocalGestureRegions provides regions) {
     transition.AnimatedContent(
-        modifier = Modifier.fillMaxSize().then(dragModifier),
+        modifier = modifier.fillMaxSize().then(dragModifier),
         transitionSpec = {
             (slideInHorizontally(tween(durationMillis = duration, easing = experience.motionEasing())) { it * direction }+fadeIn(tween(duration),initialAlpha=.85f)) togetherWith
                 (slideOutHorizontally(tween(durationMillis = duration, easing = experience.motionEasing())) { -it * direction }+fadeOut(tween(duration),targetAlpha=.9f))
