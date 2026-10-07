@@ -26,7 +26,9 @@ No accounts, ads or analytics. Configuration and focus rules stay on the device.
 
 ## Install and build
 
-Use only artifacts from the project's [GitHub Releases](https://github.com/sorin-202/EmmanueLA/releases) whose provenance you trust, or build locally. This engineering run does not publish a release. Debug artifacts are development builds; unsigned release APKs require your own signing key before installation.
+For beta testing, open **Actions → Validate EmmanueLA → a successful main-branch run → Artifacts → EmmanueLA-APK**. Extract the ZIP and install **EmmanueLA.apk**. It is the R8-minified, resource-shrunk release APK, signed with a dedicated beta key and checked for signature, non-debuggable status and API35 emulator installation. Both existing validation jobs must pass before signing. No GitHub Release or Google Play publication is created.
+
+The beta signing identity must remain stable for updates. An existing installation signed with a different key cannot be updated in place; export any needed launcher configuration before choosing to uninstall it. Physical-device compatibility is not certified by emulator checks. Maintainer setup and signing boundaries are in [beta APK signing](docs/BETA_APK.md). The separate `EmmanueLA-builds` artifact still contains development/unsigned build outputs.
 
 Open this repository directory in Android Studio, using JDK17 and Android SDK35. The wrapper uses Gradle8.11.1, AGP8.9.2 and Kotlin2.1.20.
 

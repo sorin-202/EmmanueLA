@@ -94,3 +94,95 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+
+  beta-apk:
+    # Sign only trusted main builds, after both unchanged validation jobs pass.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [build, android-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install signing tools
+        run: sdkmanager 'build-tools;35.0.0'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: EmmanueLA-builds
+          path: release-input
+
+      - name: Sign and verify optimized beta APK
+        shell: bash
+        env:
+          BETA_KEYSTORE_BASE64: ${{ secrets.BETA_KEYSTORE_BASE64 }}
+          BETA_KEYSTORE_PASSWORD: ${{ secrets.BETA_KEYSTORE_PASSWORD }}
+          BETA_KEY_ALIAS: ${{ secrets.BETA_KEY_ALIAS }}
+          BETA_KEY_PASSWORD: ${{ secrets.BETA_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in BETA_KEYSTORE_BASE64 BETA_KEYSTORE_PASSWORD BETA_KEY_ALIAS BETA_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required repository secret $name is missing."
+              exit 1
+            fi
+          done
+          unsigned=release-input/apk/release/app-release-unsigned.apk
+          test -s "$unsigned"
+          # The input must include R8's mapping from the optimized release build.
+          test -s release-input/mapping/release/mapping.txt
+          umask 077
+          signing_dir=$(mktemp -d "$RUNNER_TEMP/emmanuela-signing.XXXXXX")
+          trap 'rm -rf -- "$signing_dir"' EXIT
+          printf '%s' "$BETA_KEYSTORE_BASE64" | base64 --decode > "$signing_dir/beta.keystore"
+          mkdir -p beta-apk
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          "$tools/zipalign" -c -P 16 4 "$unsigned"
+          "$tools/apksigner" sign --ks "$signing_dir/beta.keystore" \
+            --ks-key-alias "$BETA_KEY_ALIAS" \
+            --ks-pass env:BETA_KEYSTORE_PASSWORD --key-pass env:BETA_KEY_PASSWORD \
+            --out beta-apk/EmmanueLA.apk "$unsigned"
+          "$tools/apksigner" verify --verbose beta-apk/EmmanueLA.apk
+          "$tools/zipalign" -c -P 16 4 beta-apk/EmmanueLA.apk
+          test "$(apkanalyzer manifest debuggable beta-apk/EmmanueLA.apk)" = false
+          test "$(apkanalyzer manifest application-id beta-apk/EmmanueLA.apk)" = com.emmanuela.launcher
+          {
+            echo '### Signed, non-debuggable optimized beta APK'
+            stat --printf='Size: %s bytes\n' beta-apk/EmmanueLA.apk
+            sha256sum beta-apk/EmmanueLA.apk
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enable KVM for release installation check
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install and launch signed release on API35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_2
+          disable-animations: false
+          script: |
+            adb install beta-apk/EmmanueLA.apk
+            adb shell am start -W -n com.emmanuela.launcher/.MainActivity > release-launch.txt
+            cat release-launch.txt
+            grep -q 'Status: ok' release-launch.txt
+            adb shell pidof com.emmanuela.launcher
+
+      - name: Upload installable beta APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmmanueLA-APK
+          path: beta-apk/EmmanueLA.apk
+          if-no-files-found: error
