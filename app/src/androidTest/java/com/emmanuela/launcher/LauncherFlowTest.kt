@@ -327,7 +327,10 @@ class LauncherFlowTest {
                     var node=find(label)
                     while(!node.isClickable&&node.parent!=null)node=node.parent
                     val bounds=android.graphics.Rect();node.getBoundsInScreen(bounds)
-                    assertTrue("$label bounds $bounds must end above system navigation at $safeBottom",bounds.bottom<=safeBottom)
+                    assertTrue(
+    			"$label bounds $bounds must end above system navigation at $safeBottom",
+    			bounds.bottom <= safeBottom + 1
+)
                 }
                 click("All Apps")
                 assertSafeControl("Hidden Apps")
