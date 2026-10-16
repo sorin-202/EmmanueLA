@@ -3,9 +3,12 @@ package com.emmanuela.launcher.ui.home
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.LauncherData
 import com.emmanuela.launcher.data.WidgetPlacement
+import com.emmanuela.launcher.data.HomePlacement
 import com.emmanuela.launcher.data.styleForWidget
 import com.emmanuela.launcher.ui.settings.widgetTextStyle
 import com.emmanuela.launcher.ui.settings.widgetBackground
+import com.emmanuela.launcher.ui.settings.widgetFrame
+import com.emmanuela.launcher.ui.settings.widgetPadding
 import com.emmanuela.launcher.platform.WeatherRepository
 import com.emmanuela.launcher.ui.components.localized
 import com.emmanuela.launcher.ui.navigation.homeClick
@@ -29,6 +32,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -87,6 +93,7 @@ fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,a
             val savedScale=u.experience.widgetScales[id]?:1f
             var scale by remember(id){mutableFloatStateOf(savedScale)}
             var dragging by remember(id){mutableStateOf(false)}
+            var dragOrigin by remember(id){mutableStateOf(point)}
             LaunchedEffect(initial,savedScale){if(!dragging){point=Offset(initial.x,initial.y);scale=savedScale}}
             var options by remember{mutableStateOf(false)}
             val maxX=(width-with(density){measured.width.toDp().value}*(if(arranging)scale/savedScale else 1f)).coerceAtLeast(0f)
@@ -129,7 +136,16 @@ fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,a
                         dragging=false
                     }
                 }
-            }else Modifier.homeClick(id,{action(target)},{if(v.gesturesEnabled)action(v.holdAction)})
+            }else Modifier.homeItemDrag(id,widgetName(id),{action(target)},{options=true},
+                start={dragOrigin=point;dragging=true},
+                move={amount->point=Offset((point.x+amount.x/density.density).coerceIn(0f,latestMaxX),(point.y+amount.y/density.density).coerceIn(0f,latestMaxY))},
+                drop={
+                    val final=HomePlacement.dropped(WidgetPlacement(point.x,point.y),latestMaxX,latestMaxY,v.widgetGrid)
+                    // No DataStore writes occur while the pointer moves.
+                    if(point!=dragOrigin){point=Offset(final.x,final.y);if(point!=dragOrigin)currentSave(point)}
+                    dragging=false
+                },
+                cancel={point=dragOrigin;dragging=false})
             if(options)AlertDialog(onDismissRequest={options=false},title={Text(widgetName(id))},text={Column{
                 ChoiceRow("Size",if(scale<.9f)"Small" else if(scale>1.2f)"Large" else "Medium",listOf("Small","Medium","Large")){value->scale=when(value){"Small"->.75f;"Large"->1.5f;else->1f};currentScaleSave(scale)}
                 ChoiceRow("Alignment",u.experience.widgetAlignments[id]?:"Left",listOf("Left","Center","Right")){value->
@@ -137,10 +153,12 @@ fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,a
                 TextButton(onClick={setWidget(model,id,false);options=false}){Text(localized("Remove"))}
             }},confirmButton={TextButton(onClick={options=false}){Text(localized("Done"))}})
 
-            val widgetModifier=Modifier.onSizeChanged{measured=it}
+            val widgetModifier=Modifier.zIndex(if(dragging)10f else 0f).onSizeChanged{measured=it}
                     .graphicsLayer { transformOrigin=androidx.compose.ui.graphics.TransformOrigin(0f,0f);scaleX=if(arranging)scale/savedScale else 1f;scaleY=scaleX;translationX=with(density){point.x.coerceIn(0f,maxX).dp.toPx()};translationY=with(density){point.y.coerceIn(0f,maxY).dp.toPx()} }
-                    .then(drag).widgetBackground(appearance)
-                    .then(if(arranging)Modifier.border(1.dp,MaterialTheme.colorScheme.outline)else Modifier).padding(8.dp)
+                    .then(drag)
+                    .then(if(dragging)Modifier.shadow(8.dp,RoundedCornerShape(8.dp))else Modifier)
+                    .widgetFrame(appearance).widgetBackground(appearance)
+                    .then(if(dragging||arranging)Modifier.border(if(dragging)2.dp else 1.dp,MaterialTheme.colorScheme.outline,RoundedCornerShape(8.dp))else Modifier).widgetPadding(appearance)
             val textStyle=widgetTextStyle(data,id,if(arranging)savedScale else scale)
             if(id=="clock")ClockFace(now,v,widgetColor,textStyle,widgetModifier)
             else Text(label,color=if(id=="usage"&&allowed)lerp(widgetColor,Color(0xFFFF1744),(minutes/u.screenTimeLimit).coerceIn(0f,1f))else widgetColor,style=textStyle,modifier=widgetModifier)
