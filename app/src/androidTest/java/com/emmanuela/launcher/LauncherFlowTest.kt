@@ -192,21 +192,39 @@ class LauncherFlowTest {
     @Test fun homeAndDrawerSwipesRespectDirectionAndCancellation()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
+        fun settledControl(label:String,match:((AccessibilityNodeInfo)->Boolean)?=null):android.graphics.PointF {
+            val deadline=SystemClock.uptimeMillis()+5000
+            var previous:android.graphics.Rect?=null
+            var stable=0
+            while(SystemClock.uptimeMillis()<deadline){
+                // AnimatedContent can replace the semantics node while returning Home.
+                // Reacquire its current node instead of refreshing a detached old one.
+                val node=nodes(instrumentation.uiAutomation.rootInActiveWindow).firstOrNull{it.isVisibleToUser&&(match?.invoke(it)?: (it.text?.toString()==label||it.contentDescription?.toString()==label))}
+                if(node!=null){
+                    val bounds=android.graphics.Rect();node.getBoundsInScreen(bounds)
+                    stable=if(bounds==previous&&!bounds.isEmpty)stable+1 else 0
+                    if(stable==3)return android.graphics.PointF(bounds.exactCenterX(),bounds.exactCenterY())
+                    previous=bounds
+                }else{stable=0;previous=null}
+                SystemClock.sleep(100)
+            }
+            throw AssertionError("$label must settle for three geometry samples; last bounds=$previous")
+        }
         try {
             repository.restore(LauncherData(settings=Preferences(showClock=false,showDate=false,showBattery=false,favoriteCount=0,ui=UiPreferences(bottomShortcuts=false,experience=ExperiencePreferences(language="en",autoLaunch=false)))))
             ActivityScenario.launch(MainActivity::class.java).use {
-                center(find("Launcher settings"))
+                settledControl("Launcher settings")
                 val screen=android.graphics.Rect().also{instrumentation.uiAutomation.rootInActiveWindow!!.getBoundsInScreen(it)}
                 fun point(x:Float,y:Float)=android.graphics.PointF(screen.left+screen.width()*x,screen.top+screen.height()*y)
                 drag(point(.5f,.65f),point(.5f,.3f),hold=0,cancel=true)
-                center(find("Launcher settings"))
+                settledControl("Launcher settings")
                 assertFalse("Cancelled swipe stays Home",nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.className?.toString()=="android.widget.EditText"})
                 drag(point(.5f,.65f),point(.5f,.3f),hold=0)
-                center(find("Search",match={it.className?.toString()=="android.widget.EditText"}))
+                settledControl("Search",match={it.className?.toString()=="android.widget.EditText"})
                 drag(point(.8f,.55f),point(.2f,.55f),hold=0)
-                center(find("Organized Folders"))
+                settledControl("Organized Folders")
                 drag(point(.2f,.55f),point(.8f,.55f),hold=0)
-                center(find("Launcher settings"))
+                settledControl("Launcher settings")
                 assertFalse(nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.className?.toString()=="android.widget.EditText"})
             }
         }finally{repository.restore(original)}
@@ -242,15 +260,42 @@ class LauncherFlowTest {
         val original=repository.data.first()
         val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
         var observer:kotlinx.coroutines.Job?=null
+        var uiModel:LauncherViewModel?=null
         suspend fun saved(stage:String,predicate:(AppPolicy)->Boolean) {
-            val result=kotlinx.coroutines.withTimeoutOrNull(15_000){observed.filterNotNull().first{it.policies["com.android.settings"]?.let(predicate)==true}}
+            val model=requireNotNull(uiModel)
+            val result=kotlinx.coroutines.withTimeoutOrNull(15_000){
+                kotlinx.coroutines.flow.combine(observed.filterNotNull(),model.data){persisted,displayed->persisted to displayed}.first{(persisted,displayed)->
+                    persisted.policies["com.android.settings"]?.let(predicate)==true&&displayed.policies["com.android.settings"]?.let(predicate)==true
+                }
+            }
             assertNotNull("Persistence wait [$stage] timed out; observed=${observed.value?.policies?.get("com.android.settings")}",result)
+        }
+        fun tapVisibleButton(label:String){
+            // Saving replaces the draft's remembered state. Resolve and settle the
+            // current visible node before a real touch, rather than clicking a cached ID.
+            val node=find(label,scroll=true,match={candidate->
+                var control:AccessibilityNodeInfo?=candidate
+                while(control!=null&&!control.isClickable)control=control.parent
+                candidate.text?.toString()==label&&control?.isEnabled==true
+            })
+            node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+            instrumentation.waitForIdleSync()
+            val point=center(node)
+            val down=SystemClock.uptimeMillis()
+            for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                val properties=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+                val coordinates=android.view.MotionEvent.PointerCoords().apply{x=point.x;y=point.y;pressure=1f;size=1f}
+                val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(properties),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+                try{assertTrue("Inject touch for $label",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+            }
+            instrumentation.waitForIdleSync()
         }
         try {
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false)))))
             observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity{uiModel=androidx.lifecycle.ViewModelProvider(it)[LauncherViewModel::class.java]}
                 click("Launcher settings");click("Apps",scroll=true);click("Notifications");click("Settings",scroll=true)
                 click("Delivery");click("DISMISS");click("Apply rule",scroll=true);click("Schedule")
                 val keywords=find("Keywords",scroll=true,match={it.className?.toString()=="android.widget.EditText"})
@@ -263,9 +308,9 @@ class LauncherFlowTest {
                 })
                 click("Save notification rule",scroll=true)
                 saved("save-rule"){it.notifications==NotificationMode.DISMISS&&it.notificationRule.scope==NotificationScope.SCHEDULE&&it.notificationRule.keywords==setOf("urgent","meeting")}
-                click("Suppress for 30 minutes",scroll=true)
+                tapVisibleButton("Suppress for 30 minutes")
                 saved("suppress-30-min"){it.notificationRule.suppressUntil>System.currentTimeMillis()}
-                click("End suppression",scroll=true)
+                tapVisibleButton("End suppression")
                 saved("end-suppression"){it.notificationRule.suppressUntil==0L}
                 scenario.recreate()
                 val policy=repository.data.first().policies.getValue("com.android.settings")

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.PointF
 import android.graphics.Rect
 import android.os.SystemClock
+import android.os.Bundle
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -30,10 +31,24 @@ class HomeShortcutFlowTest {
             nodes(instrumentation.uiAutomation.rootInActiveWindow).firstOrNull{it.isVisibleToUser&&(it.contentDescription?.toString()==label||it.text?.toString()==label)}?.let{return it}
             SystemClock.sleep(50)
         }
-        throw AssertionError("Home shortcut control not found: $label")
+        throw AssertionError("Home shortcut control not found: $label. Visible controls: "+nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}.mapNotNull{it.contentDescription?.toString()?:it.text?.toString()}.joinToString(" | "))
     }
     private fun click(label:String){var node=find(label);while(!node.isClickable&&node.parent!=null)node=node.parent;assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_CLICK));instrumentation.waitForIdleSync()}
-    private fun center(label:String):PointF {val bounds=Rect();find(label).getBoundsInScreen(bounds);return PointF(bounds.exactCenterX(),bounds.exactCenterY())}
+    private fun center(label:String,expected:PointF?=null):PointF {
+        val deadline=SystemClock.uptimeMillis()+5000
+        var previous:PointF?=null;var stable=0
+        while(SystemClock.uptimeMillis()<deadline){
+            val node=nodes(instrumentation.uiAutomation.rootInActiveWindow).firstOrNull{it.isVisibleToUser&&it.contentDescription?.toString()==label}
+            if(node!=null){
+                val bounds=Rect();node.getBoundsInScreen(bounds);val point=PointF(bounds.exactCenterX(),bounds.exactCenterY())
+                if(expected!=null){if(kotlin.math.abs(point.x-expected.x)<=1f&&kotlin.math.abs(point.y-expected.y)<=1f)return point}
+                else{stable=if(point==previous)stable+1 else 0;if(stable>=2)return point}
+                previous=point
+            }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("$label did not reach ${expected?:"a stable position"}; last visible center=$previous")
+    }
     private fun gesture(from:PointF,to:PointF,cancel:Boolean=false,moving:()->Unit={}) {
         val down=SystemClock.uptimeMillis()
         fun inject(action:Int,point:PointF){
@@ -62,7 +77,13 @@ class HomeShortcutFlowTest {
             observer=launch(Dispatchers.IO){repository.data.collect{observed.value=it}}
             withTimeout(5000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use{scenario->
-                click("Add app to Home");click("Add ${app.label} to Home")
+                click("Add app to Home")
+                find("Find installed app")
+                // Settings is below the first viewport on the stock emulator. Exercise
+                // the actual picker search instead of assuming every installed app fits.
+                val query=nodes(instrumentation.uiAutomation.rootInActiveWindow).first{it.isVisibleToUser&&it.className?.toString()=="android.widget.EditText"}
+                assertTrue(query.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,app.label)}))
+                click("Add ${app.label} to Home")
                 withTimeout(5000){observed.filterNotNull().first{it.settings.ui.v2.homeShortcuts.size==1}}
                 val label="${app.label}, Home shortcut";val from=center(label)
                 val before=observed.value!!.settings.ui.v2.homeShortcuts.single().position
@@ -70,10 +91,13 @@ class HomeShortcutFlowTest {
                     assertEquals(before,observed.value!!.settings.ui.v2.homeShortcuts.single().position)
                 }
                 val moved=withTimeout(5000){observed.filterNotNull().first{it.settings.ui.v2.homeShortcuts.single().position!=before}}.settings.ui.v2.homeShortcuts.single().position
-                val next=center(label);gesture(next,PointF(next.x+30f,next.y-50f),cancel=true)
-                assertEquals(next.x,center(label).x,1f);assertEquals(next.y,center(label).y,1f)
+                val density=context.resources.displayMetrics.density
+                val expected=PointF(from.x+(moved.x-before.x)*density,from.y+(moved.y-before.y)*density)
+                val next=center(label,expected);gesture(next,PointF(next.x+30f,next.y-50f),cancel=true)
+                val restored=center(label,next)
+                assertEquals(next.x,restored.x,1f);assertEquals(next.y,restored.y,1f)
                 assertEquals(moved,repository.data.first().settings.ui.v2.homeShortcuts.single().position)
-                scenario.recreate();find(label)
+                scenario.recreate();center(label,next)
                 click(label);find("App unavailable in EmmanueLA");assertEquals(context.packageName,instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString());click("Close")
                 val position=center(label);gesture(position,position);click("Remove from Home")
                 withTimeout(5000){observed.filterNotNull().first{it.settings.ui.v2.homeShortcuts.isEmpty()}}

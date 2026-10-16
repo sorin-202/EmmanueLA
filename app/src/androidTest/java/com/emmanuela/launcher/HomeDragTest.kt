@@ -24,14 +24,26 @@ class HomeDragTest {
     private fun nodes(node:AccessibilityNodeInfo?):List<AccessibilityNodeInfo> =
         if(node==null)emptyList()else listOf(node)+(0 until node.childCount).flatMap{nodes(node.getChild(it))}
 
-    private fun clockCenter():PointF {
+    private fun clockCenter(expected:PointF?=null):PointF {
         val deadline=SystemClock.uptimeMillis()+5000
+        var previous:PointF?=null
+        var stable=0
         while(SystemClock.uptimeMillis()<deadline){
             val node=nodes(instrumentation.uiAutomation.rootInActiveWindow).firstOrNull{it.isVisibleToUser&&it.contentDescription?.toString()=="Clock"}
-            if(node!=null){val rect=Rect();node.getBoundsInScreen(rect);return PointF(rect.exactCenterX(),rect.exactCenterY())}
+            if(node!=null){
+                val rect=Rect();node.getBoundsInScreen(rect)
+                val point=PointF(rect.exactCenterX(),rect.exactCenterY())
+                if(expected!=null){
+                    if(kotlin.math.abs(point.x-expected.x)<=1f&&kotlin.math.abs(point.y-expected.y)<=1f)return point
+                }else{
+                    stable=if(point==previous)stable+1 else 0
+                    if(stable>=2)return point
+                }
+                previous=point
+            }
             SystemClock.sleep(50)
         }
-        throw AssertionError("Clock not found on normal Home")
+        throw AssertionError("Clock did not reach ${expected?:"a stable position"}; last visible center=$previous")
     }
 
     private fun drag(from:PointF,to:PointF,cancel:Boolean=false,hold:Boolean=true,steps:Int=15,moving:()->Unit={}) {
@@ -58,7 +70,9 @@ class HomeDragTest {
         val original=repository.data.first()
         var observer:Job?=null
         try {
-            repository.restore(fixture(gesturesEnabled=true))
+            val initial=WidgetPlacement(96f,48f)
+            val state=fixture(gesturesEnabled=true)
+            repository.restore(state.copy(settings=state.settings.copy(ui=state.settings.ui.copy(v2=state.settings.ui.v2.copy(widgetPositions=mapOf("clock" to initial))))))
             val observed=MutableStateFlow<LauncherData?>(null)
             val emissions=java.util.concurrent.atomic.AtomicInteger()
             observer=launch(Dispatchers.IO){repository.data.collect{emissions.incrementAndGet();observed.value=it}}
@@ -69,12 +83,18 @@ class HomeDragTest {
                     assertEquals("No DataStore emission while moving",count,emissions.get())
                     assertTrue("Visual placement follows held pointer",clockCenter().y>from.y+30f)
                 }
-                val saved=withTimeout(5000){observed.filterNotNull().first{it.settings.ui.v2.widgetPositions["clock"]!=null}}.settings.ui.v2.widgetPositions.getValue("clock")
+                val saved=withTimeout(5000){observed.filterNotNull().first{it.settings.ui.v2.widgetPositions["clock"]!=initial}}.settings.ui.v2.widgetPositions.getValue("clock")
                 assertEquals("One completed placement",count+1,emissions.get())
-                val end=clockCenter();assertTrue(end.y>from.y)
+                val density=instrumentation.targetContext.resources.displayMetrics.density
+                assertEquals("The saved placement follows the pointer and configured grid",HomePlacement.dropped(WidgetPlacement(initial.x+50f/density,initial.y+100f/density),1000f,1000f,16),saved)
+                val expected=PointF(from.x+(saved.x-initial.x)*density,from.y+(saved.y-initial.y)*density)
+                // Android queue idle precedes Compose's next graphics-layer frame. Wait for
+                // the committed snap, rather than snapshotting the last unsnapped MOVE.
+                val end=clockCenter(expected);assertTrue(end.y>from.y)
                 scenario.recreate()
                 assertEquals(saved,ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.v2.widgetPositions["clock"])
-                assertEquals(end.x,clockCenter().x,1f);assertEquals(end.y,clockCenter().y,1f)
+                val recreated=clockCenter(expected)
+                assertEquals(end.x,recreated.x,1f);assertEquals(end.y,recreated.y,1f)
             }
         }finally{observer?.cancelAndJoin();repository.restore(original)}
     }
@@ -87,14 +107,16 @@ class HomeDragTest {
             ActivityScenario.launch(MainActivity::class.java).use{
                 val from=clockCenter()
                 drag(from,PointF(from.x+40f,from.y+100f),cancel=true){assertTrue(clockCenter().y>from.y+30f)}
-                assertEquals(from.x,clockCenter().x,1f);assertEquals(from.y,clockCenter().y,1f)
+                val restored=clockCenter(from)
+                assertEquals(from.x,restored.x,1f);assertEquals(from.y,restored.y,1f)
                 assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
                 // A quick swipe over a widget must never acquire placement.
                 drag(from,PointF(from.x+40f,from.y+100f),hold=false)
                 assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
                 // Moving first, then pausing, is still a scroll rather than a hold-and-drag.
                 drag(from,PointF(from.x+40f,from.y+20f),hold=false){SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+100L)}
-                assertEquals(from.x,clockCenter().x,1f);assertEquals(from.y,clockCenter().y,1f)
+                val afterScroll=clockCenter(from)
+                assertEquals(from.x,afterScroll.x,1f);assertEquals(from.y,afterScroll.y,1f)
                 assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
             }
         }finally{repository.restore(original)}
