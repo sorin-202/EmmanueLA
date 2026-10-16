@@ -27,7 +27,21 @@ object EnforcementBridge {
     var connected:Boolean
         get()=mutableStatus.value.connected
         set(value){mutableStatus.value=mutableStatus.value.copy(connected=value)}
-    fun browser(pkg:String,readable:Boolean,issue:String?){mutableStatus.value=EnforcementStatus(connected,pkg,readable,issue)}
+    fun browser(pkg:String,result:BrowserAdapters.Result){
+        val issue=when(result.unavailable){
+            BrowserAdapters.Unavailable.UNSUPPORTED_BROWSER->"Unsupported browser: website rules have no address adapter."
+            BrowserAdapters.Unavailable.FOREIGN_WINDOW->"Browser window unavailable. Website rules cannot be verified."
+            BrowserAdapters.Unavailable.MISSING_ADDRESS_FIELD->"Address control not exposed on this browser screen. Website rules cannot be verified."
+            BrowserAdapters.Unavailable.EDITING_ADDRESS->"Address is being edited. Waiting for navigation before checking website rules."
+            BrowserAdapters.Unavailable.TREE_ACCESS_FAILED->"Android accessibility tree query failed. Website rule enforcement cannot be verified."
+            BrowserAdapters.Unavailable.UNREADABLE_ADDRESS->"Address control found, but no web address is readable. Website rules cannot be verified."
+            null->null
+        }
+        mutableStatus.value=mutableStatus.value.copy(browserPackage=pkg,addressReadable=result.address!=null,issue=issue)
+    }
+    fun action(pkg:String?,outcome:EnforcementOutcome,reason:String?=null){
+        mutableStatus.value=mutableStatus.value.copy(foregroundPackage=pkg,outcome=outcome,reason=reason)
+    }
     private val grants=mutableMapOf<String,Long>()
     @Synchronized fun grant(pkg:String){grants[pkg]=SystemClock.elapsedRealtime()+5000}
     @Synchronized fun consume(pkg:String):Boolean{val at=grants.remove(pkg)?:return false;return SystemClock.elapsedRealtime()<at}
@@ -41,10 +55,21 @@ class RuleEnforcementService:AccessibilityService(){
     private var generation=0L
     private var admission:Job?=null
     private var configurationJob:Job?=null
+    private var foregroundRead:Job?=null
+    private var foregroundReadPending=false
+    private var permissionListener:android.app.AppOpsManager.OnOpChangedListener?=null
     private var receiverRegistered=false
-    private val screenReceiver=object:BroadcastReceiver(){override fun onReceive(context:Context?,intent:Intent?){if(intent?.action==Intent.ACTION_SCREEN_OFF){generation++;check?.cancel();admission?.cancel();timer?.cancel();foreground="";currentUrl="";browserRead?.cancel();browserRead=null;admitted=false;removeOverlay()}else if(intent?.action in setOf(Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED)){timer?.cancel();evaluate(false)}}}
-    private var sessionStarted=0L
+    private val screenReceiver=object:BroadcastReceiver(){
+        override fun onReceive(context:Context?,intent:Intent?){
+            when(intent?.action){
+                Intent.ACTION_SCREEN_OFF->leaveForeground()
+                Intent.ACTION_SCREEN_ON,Intent.ACTION_USER_PRESENT->refreshForeground()
+                Intent.ACTION_TIME_CHANGED,Intent.ACTION_TIMEZONE_CHANGED->{timer?.cancel();evaluate()}
+            }
+        }
+    }
     private val sessionBase=mutableMapOf<String,Long>()
+    private val sessionAnchors=mutableMapOf<String,Long>()
     private var check:Job?=null
     private var timer:Job?=null
     private var pauseJob:Job?=null
@@ -59,51 +84,147 @@ class RuleEnforcementService:AccessibilityService(){
     private val warnedRules=mutableSetOf<String>()
     private var warningDay=""
     override fun onServiceConnected(){
+        super.onServiceConnected()
         EnforcementBridge.connected=true
-        if(!receiverRegistered){ContextCompat.registerReceiver(this,screenReceiver,IntentFilter(Intent.ACTION_SCREEN_OFF).apply{addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED)},ContextCompat.RECEIVER_NOT_EXPORTED);receiverRegistered=true}
+        if(!receiverRegistered){
+            ContextCompat.registerReceiver(this,screenReceiver,IntentFilter(Intent.ACTION_SCREEN_OFF).apply {
+                addAction(Intent.ACTION_SCREEN_ON);addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_TIME_CHANGED);addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            },ContextCompat.RECEIVER_NOT_EXPORTED)
+            receiverRegistered=true
+        }
+        // Usage access can be revoked while a limited app remains open.
+        if(permissionListener==null){
+            permissionListener=android.app.AppOpsManager.OnOpChangedListener { operation,pkg ->
+                if(operation==android.app.AppOpsManager.OPSTR_GET_USAGE_STATS && pkg==packageName)
+                    scope.launch { sessionBase.clear();sessionAnchors.clear();evaluate() }
+            }
+            getSystemService(android.app.AppOpsManager::class.java).startWatchingMode(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,packageName,permissionListener!!)
+        }
         configurationJob?.cancel()
-        configurationJob=scope.launch{ConfigurationRepository(applicationContext).data.collect{next->if(next.focusGroups!=state.focusGroups||next.policies!=state.policies){generation++;check?.cancel();admission?.cancel();timer?.cancel();removeOverlay();admitted=false;handoffPending=false;warnedRules.clear()};state=next;if(!state.settings.ui.v2.backgroundRules){generation++;check?.cancel();admission?.cancel();removeOverlay();timer?.cancel();admitted=false}else evaluate(false)}}
+        configurationJob=scope.launch {
+            ConfigurationRepository(applicationContext).data.collect { next ->
+                val changed=next.focusGroups!=state.focusGroups||next.policies!=state.policies||next.folders!=state.folders
+                val enabling=!state.settings.ui.v2.backgroundRules&&next.settings.ui.v2.backgroundRules
+                if(changed){
+                    generation++;check?.cancel();admission?.cancel();timer?.cancel();removeOverlay()
+                    admitted=false;handoffPending=false;sessionBase.clear();sessionAnchors.clear();warnedRules.clear()
+                }
+                state=next
+                if(!next.settings.ui.v2.backgroundRules)leaveForeground()
+                else if(enabling||foreground.isEmpty())refreshForeground()
+                else {evaluate();if(hasWebsiteRules(foreground))readBrowserAddress(foreground)}
+            }
+        }
     }
+
+    private fun hasWebsiteRules(pkg:String)=state.focusGroups.any {
+        pkg in it.browsers&&(it.websites.isNotEmpty()||it.keywords.isNotEmpty())
+    }
+
     override fun onAccessibilityEvent(event:AccessibilityEvent?){
         if(event==null||!state.settings.ui.v2.backgroundRules)return
-        val pkg=event.packageName?.toString()?:return
-        if(event.eventType==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED){
-            // System permission/keyguard windows must remain reachable.
-            if(pkg==packageName&&overlay!=null)return
-            if(pkg=="com.android.systemui"||pkg=="com.android.settings"||pkg=="com.google.android.permissioncontroller"||pkg=="com.android.permissioncontroller"){generation++;check?.cancel();admission?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();foreground="";admitted=false;return}
-            if(pkg!=foreground){generation++;browserRead?.cancel();browserRead=null;warnedAddress=false;EnforcementBridge.connected=true;admission?.cancel();check?.cancel();timer?.cancel();pauseJob?.cancel();removeOverlay();sessionBase.clear();countedRules.clear();warnedRules.clear();activeRules=emptySet();foreground=pkg;handoffPending=EnforcementBridge.consume(pkg);admitted=false;currentUrl="";sessionStarted=SystemClock.elapsedRealtime();evaluate(true)}
-        }
-        if(pkg==foreground&&state.focusGroups.any{pkg in it.browsers}&&(event.eventType==AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED||event.eventType==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)){
-            readBrowserAddress(pkg)
+        when(event.eventType){
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,AccessibilityEvent.TYPE_WINDOWS_CHANGED -> refreshForeground()
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> if(event.packageName?.toString()==foreground&&hasWebsiteRules(foreground))readBrowserAddress(foreground)
         }
     }
+
+    /** Reconcile with actual application windows, including already-open apps on connect/unlock. */
+    private fun refreshForeground(){
+        foregroundReadPending=true
+        if(foregroundRead?.isActive==true)return
+        foregroundRead=scope.launch {
+            do {
+                foregroundReadPending=false
+                val expected=generation
+                val pkg=try {
+                    withContext(Dispatchers.IO){
+                        if(!getSystemService(android.os.PowerManager::class.java).isInteractive||
+                            getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked)null
+                        else activeApplicationRoot()?.let { root ->
+                            try { root.packageName?.toString() } finally { @Suppress("DEPRECATION") root.recycle() }
+                        }
+                    }
+                }catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){
+                    EnforcementBridge.action(foreground,EnforcementOutcome.FAILED,"Android application window query failed. Background rules cannot be verified.")
+                    return@launch
+                }
+                if(expected!=generation||!state.settings.ui.v2.backgroundRules)continue
+                if(pkg==null){leaveForeground();continue}
+                // Permission, keyguard and emergency system controls must remain reachable.
+                if(pkg in systemPackages){leaveForeground();continue}
+                if(pkg!=foreground){
+                    leaveForeground()
+                    foreground=pkg;handoffPending=EnforcementBridge.consume(pkg)
+                    EnforcementBridge.action(pkg,EnforcementOutcome.IDLE)
+                    evaluate()
+                }
+                if(hasWebsiteRules(pkg))readBrowserAddress(pkg)
+            }while(foregroundReadPending)
+        }
+    }
+
+    private fun activeApplicationRoot():android.view.accessibility.AccessibilityNodeInfo? {
+        // Our accessibility overlay can own rootInActiveWindow. Query application windows
+        // beneath it so URL changes and rule updates never mistake it for the launcher.
+        val snapshot=windows
+        try {
+            val application=snapshot.filter { it.type==android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            val selected=application.firstOrNull { it.isFocused }?:application.firstOrNull { it.isActive }
+                ?:if(overlay!=null)application.maxByOrNull { it.layer }else null
+            selected?.root?.let { return it }
+            val root=rootInActiveWindow
+            if(overlay!=null&&root?.packageName?.toString()==packageName){
+                @Suppress("DEPRECATION") root.recycle()
+                return null
+            }
+            return root
+        }finally {
+            snapshot.forEach { @Suppress("DEPRECATION") it.recycle() }
+        }
+    }
+
+    private fun leaveForeground(){
+        generation++;check?.cancel();admission?.cancel();timer?.cancel();browserRead?.cancel();browserRead=null
+        pauseJob?.cancel();removeOverlay();foreground="";currentUrl="";admitted=false;handoffPending=false
+        sessionBase.clear();sessionAnchors.clear();countedRules.clear();warnedRules.clear();activeRules=emptySet();warnedAddress=false
+        EnforcementBridge.action(null,EnforcementOutcome.IDLE)
+    }
+
     private fun readBrowserAddress(pkg:String){
         browserReadPending=true
         if(browserRead?.isActive==true)return
-        browserRead=scope.launch{
+        browserRead=scope.launch {
             do {
                 browserReadPending=false
                 val expected=generation
-                // Accessibility tree queries can block on the browser; keep them off the UI thread.
-                val snapshot=withContext(Dispatchers.IO){
-                    val root=rootInActiveWindow
-                    val owner=root?.packageName?.toString()
-                    val values=if(owner==pkg)BrowserAdapters.ids[pkg].orEmpty().flatMap{id->root?.findAccessibilityNodeInfosByViewId("$pkg:id/$id").orEmpty().mapNotNull{it.text?.toString()}}else emptyList()
-                    owner to values
+                val result=withContext(Dispatchers.IO){
+                    try {
+                        val root=activeApplicationRoot()
+                        try { BrowserAdapters.read(root,pkg) } finally { @Suppress("DEPRECATION") root?.recycle() }
+                    }catch(_:Exception){BrowserAdapters.Result(unavailable=BrowserAdapters.Unavailable.TREE_ACCESS_FAILED)}
                 }
                 if(expected!=generation||foreground!=pkg||!state.settings.ui.v2.backgroundRules)return@launch
-                // Our own overlay hides the browser tree; keep the decision that created it.
-                if(snapshot.first==packageName&&overlay!=null)return@launch
-                val address=BrowserAdapters.address(pkg,snapshot.first,snapshot.second)
-                val issue=if(address!=null)null else if(pkg !in BrowserAdapters.ids)"This browser has no address adapter. Website rules are unavailable." else "Browser address unavailable. Website rules cannot be verified on this screen."
-                EnforcementBridge.browser(pkg,address!=null,issue)
-                if(issue!=null&&!warnedAddress){warnedAddress=true;android.widget.Toast.makeText(this@RuleEnforcementService,issue,android.widget.Toast.LENGTH_LONG).show()}
-                if(address.orEmpty()!=currentUrl){currentUrl=address.orEmpty();evaluate(false)}
+                EnforcementBridge.browser(pkg,result)
+                if(result.unavailable!=null&&result.unavailable!=BrowserAdapters.Unavailable.EDITING_ADDRESS&&!warnedAddress){
+                    warnedAddress=true
+                    android.widget.Toast.makeText(this@RuleEnforcementService,EnforcementBridge.status.value.issue,android.widget.Toast.LENGTH_LONG).show()
+                }
+                // Editing is not a new navigation. Keep an already-enforced page covered.
+                if(result.unavailable==BrowserAdapters.Unavailable.EDITING_ADDRESS)continue
+                // An overlay may obscure the underlying toolbar. Losing that tree is
+                // not evidence that the already-matched page navigated elsewhere.
+                if(result.unavailable!=null&&overlay!=null&&currentUrl.isNotEmpty())continue
+                if(result.address.orEmpty()!=currentUrl){currentUrl=result.address.orEmpty();evaluate()}
             }while(browserReadPending)
         }
     }
-    private fun groups(pkg:String)=state.focusGroups.filter{pkg in it.packages||(pkg in it.browsers&&(it.websites.isNotEmpty()||it.keywords.isNotEmpty())&&FocusWindows.matches(it,currentUrl))}
-    private fun evaluate(opening:Boolean){
+
+    private fun groups(pkg:String)=FocusTargets.groups(state.focusGroups,pkg,currentUrl)
+    private fun evaluate(){
         val pkg=foreground
         if(pkg.isEmpty()||pkg==packageName){removeOverlay();return}
         check?.cancel()
@@ -112,9 +233,12 @@ class RuleEnforcementService:AccessibilityService(){
                 val policy=state.policies[pkg]?:AppPolicy()
                 val groups=groups(pkg)
                 val protectedFolder=state.folders.any{it.isProtected&&it.apps.any{id->id.substringBefore('/')==pkg}}
-                if(groups.isEmpty()&&policy==AppPolicy()&&!protectedFolder){removeOverlay();timer?.cancel();admitted=false;sessionBase.clear();activeRules=emptySet();return@launch}
+                if(groups.isEmpty()&&policy==AppPolicy()&&!protectedFolder){removeOverlay();timer?.cancel();admitted=false;sessionBase.clear();sessionAnchors.clear();activeRules=emptySet();EnforcementBridge.action(pkg,EnforcementOutcome.ALLOWED);return@launch}
                 val ids=groups.map{it.id}.toSet()
-                if(ids!=activeRules){admitted=false;activeRules=ids;sessionBase.keys.retainAll(ids);sessionStarted=SystemClock.elapsedRealtime()}
+                if(ids!=activeRules){
+                    sessionBase.keys.toList().forEach { sessionBase[it]=sessionElapsed(it) }
+                    admitted=false;activeRules=ids;sessionBase.keys.retainAll(ids);sessionAnchors.keys.retainAll(ids)
+                }
                 val handoff=handoffPending
                 if(!handoff&&!admitted&&(policy.privateApp||protectedFolder)){
                     showBlock("Confirm your identity in EmmanueLA",0,onOpen={removeOverlay();startActivity(Intent(this@RuleEnforcementService,com.emmanuela.launcher.MainActivity::class.java).putExtra("authenticate_package",pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))});return@launch
@@ -123,32 +247,32 @@ class RuleEnforcementService:AccessibilityService(){
                 val usage=withContext(Dispatchers.IO){applicationContext.appUsageToday()}
                 val counts=withContext(Dispatchers.IO){getSharedPreferences("focus_opens",MODE_PRIVATE).all}
                 var reason=PolicyRules.reason(policy,now,usage,pkg)
-                val session=(SystemClock.elapsedRealtime()-sessionStarted).coerceAtLeast(0)
                 groups.forEach{g->
-                    val used=usage?.let{if(g.perApp)it[pkg]?:0L else g.packages.sumOf{p->it[p]?:0L}+if(g.packages.isEmpty())it[pkg]?:0L else 0L}
+                    val used=FocusTargets.used(g,pkg,usage)
                     val opens=(counts[FocusWindows.countKey(g,pkg,now.toLocalDate().toString())]as?Int)?:0
                     val effective=if(admitted)g.copy(maxOpens=0)else g
                     val admissionOpens=(opens-if(handoff)1 else 0).coerceAtLeast(0)
                     reason=reason?:FocusWindows.reason(effective,now,used,admissionOpens)
                     if(reason!=null)return@forEach
                     if(g.sessionMinutes>0&&FocusWindows.limited(g,now)&&g.id !in sessionBase){
-                        val prior=applicationContext.recentGroupSession(if(g.perApp||g.packages.isEmpty())setOf(pkg)else g.packages,g.cooldownSeconds)
+                        val prior=applicationContext.recentGroupSession(FocusTargets.usagePackages(g,pkg),g.cooldownSeconds)
                         if(prior==null){
                             if(g.limitAction=="Block")reason="Enable Usage Access for session limits"
                             else warnOnce(g.id,"Enable Usage Access for session warnings",now)
                             return@forEach
                         }
                         sessionBase[g.id]=if(!prior.active&&System.currentTimeMillis()-prior.lastActiveAt>=g.cooldownSeconds*1000L)0L else prior.milliseconds
+                        sessionAnchors[g.id]=SystemClock.elapsedRealtime()
                     }
-                    val elapsed=(sessionBase[g.id]?:0L)+if(admitted)session else 0
+                    val elapsed=sessionElapsed(g.id)
                     reason=FocusWindows.reason(effective,now,used,admissionOpens,elapsed)
                     if(reason==null)FocusWindows.warning(g,now,used,opens,elapsed)?.let{warnOnce(g.id,it,now)}
                 }
-                if(reason!=null){showBlock(reason!!,0,null);scheduleDeadline(pkg,groups,usage,session,blocked=true);return@launch}
+                if(reason!=null){showBlock(reason!!,0,null);scheduleDeadline(pkg,groups,usage,blocked=true);return@launch}
                 val pause=if(!admitted&&!handoff)groups.filter{FocusWindows.limited(it,now)}.maxOfOrNull{FocusCodec.pauseDelay(it,(counts[FocusWindows.countKey(it,pkg,now.toLocalDate().toString())]as?Int)?:0)}?:0 else 0
                 val intention=!admitted&&!handoff&&groups.any{it.pause&&it.requireIntention&&FocusWindows.limited(it,now)}
                 if(pause>0||intention){showBlock("Look around",pause,onOpen={admit(pkg,groups,false)},requireIntention=intention);return@launch}
-                if(!admitted)admit(pkg,groups,handoff)else scheduleDeadline(pkg,groups,usage,session)
+                if(!admitted)admit(pkg,groups,handoff)else {removeOverlay();EnforcementBridge.action(pkg,EnforcementOutcome.ALLOWED);scheduleDeadline(pkg,groups,usage)}
             }catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){showBlock("Rules unavailable. Return Home and check Usage Access.",0,null)}
         }
     }
@@ -161,20 +285,23 @@ class RuleEnforcementService:AccessibilityService(){
             if(!alreadyCounted)withContext(Dispatchers.IO){val prefs=getSharedPreferences("focus_opens",MODE_PRIVATE);val edit=prefs.edit();val day=ZonedDateTime.now().toLocalDate().toString();prefs.all.keys.filterNot{it.startsWith("$day:")}.forEach{edit.remove(it)};groups.filter{it.id !in countedSnapshot&&FocusWindows.limited(it,ZonedDateTime.now())}.forEach{g->val key=FocusWindows.countKey(g,pkg,day);edit.putInt(key,prefs.getInt(key,0)+1)};kotlin.check(edit.commit())}
             if(foreground!=pkg||expected!=generation||!state.settings.ui.v2.backgroundRules)return@launch
             countedRules+=groups.map{it.id}
-            handoffPending=false;admitted=true;sessionStarted=SystemClock.elapsedRealtime();removeOverlay()
-            evaluate(false)
+            handoffPending=false;admitted=true;sessionAnchors.keys.toList().forEach { sessionAnchors[it]=SystemClock.elapsedRealtime() };removeOverlay()
+            EnforcementBridge.action(pkg,EnforcementOutcome.ALLOWED)
+            evaluate()
         }
     }
-    private fun scheduleDeadline(pkg:String,groups:List<FocusGroup>,usage:Map<String,Long>?,session:Long,blocked:Boolean=false){
+    private fun sessionElapsed(id:String):Long = (sessionBase[id]?:0L)+
+        if(admitted)sessionAnchors[id]?.let { (SystemClock.elapsedRealtime()-it).coerceAtLeast(0) }?:0L else 0L
+    private fun scheduleDeadline(pkg:String,groups:List<FocusGroup>,usage:Map<String,Long>?,blocked:Boolean=false){
         timer?.cancel();val now=ZonedDateTime.now();val times=mutableListOf<Long>()
         groups.forEach{g->
             FocusWindows.nextBoundary(g,now)?.let(times::add)
             if(!blocked&&FocusWindows.limited(g,now)){
                 if(g.sessionMinutes>0){
-                    times+=FocusWindows.sessionBudget(g)-session-(sessionBase[g.id]?:0L)
-                    if(g.warningMinutes>0)times+=(g.sessionMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L-session-(sessionBase[g.id]?:0L)
+                    times+=FocusWindows.sessionBudget(g)-sessionElapsed(g.id)
+                    if(g.warningMinutes>0)times+=(g.sessionMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L-sessionElapsed(g.id)
                 }
-                if(g.dailyMinutes>0&&usage!=null){val used=if(g.perApp)usage[pkg]?:0 else g.packages.sumOf{usage[it]?:0}+if(g.packages.isEmpty())usage[pkg]?:0 else 0;times+=FocusWindows.dailyBudget(g)-used;if(g.warningMinutes>0)times+=(g.dailyMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L-used}
+                if(g.dailyMinutes>0&&usage!=null){val used=FocusTargets.used(g,pkg,usage)?:0L;times+=FocusWindows.dailyBudget(g)-used;if(g.warningMinutes>0)times+=(g.dailyMinutes-g.warningMinutes).coerceAtLeast(0)*60_000L-used}
             }
         }
         val p=state.policies[pkg]
@@ -182,7 +309,7 @@ class RuleEnforcementService:AccessibilityService(){
         if(p?.scheduleEnabled==true){val w=FocusGroup(schedule=true,days=p.days,startMinute=p.startMinute,endMinute=p.endMinute);FocusWindows.nextBoundary(w,now)?.let(times::add)}
         times+=java.time.Duration.between(now,now.toLocalDate().plusDays(1).atStartOfDay(now.zone)).toMillis()
         val next=RuleDeadline.next(times)?:return
-        timer=scope.launch{delay(next.coerceAtLeast(100));if(foreground==pkg)evaluate(false)}
+        timer=scope.launch{delay(next.coerceAtLeast(100));if(foreground==pkg)evaluate()}
     }
     private fun warnOnce(id:String,message:String,now:ZonedDateTime){
         val day=now.toLocalDate().toString()
@@ -204,12 +331,42 @@ class RuleEnforcementService:AccessibilityService(){
         val button=Button(this).apply{text=if(seconds>0)"$seconds"else if(onOpen!=null)"Open app"else "Blocked";isEnabled=ready&&onOpen!=null&&!requireIntention;setOnClickListener{onOpen?.invoke()}}
         intention?.addTextChangedListener{button.isEnabled=ready&&onOpen!=null&&!it.isNullOrBlank()}
         if(onOpen!=null)box.addView(button)
-        box.addView(Button(this).apply{text="Home";setOnClickListener{performGlobalAction(GLOBAL_ACTION_HOME);removeOverlay()}})
+        box.addView(Button(this).apply{text="Home";setOnClickListener{
+            val sent=performGlobalAction(GLOBAL_ACTION_HOME)
+            EnforcementBridge.action(this@RuleEnforcementService.foreground,if(sent)EnforcementOutcome.HOME_REQUESTED else EnforcementOutcome.FAILED,
+                if(sent)"Return Home requested"else "Android rejected the Home action")
+            if(sent)removeOverlay()
+        }})
         val params=WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,android.graphics.PixelFormat.TRANSLUCENT)
-        try{wm.addView(box,params);overlay=box}catch(_:Exception){performGlobalAction(GLOBAL_ACTION_HOME);return}
+        try{
+            wm.addView(box,params);overlay=box
+            EnforcementBridge.action(foreground,EnforcementOutcome.OVERLAY_SHOWN,reason)
+        }catch(_:Exception){
+            val sent=performGlobalAction(GLOBAL_ACTION_HOME)
+            EnforcementBridge.action(this@RuleEnforcementService.foreground,if(sent)EnforcementOutcome.HOME_REQUESTED else EnforcementOutcome.FAILED,
+                if(sent)"Overlay unavailable; return Home requested"else "Android rejected the blocking overlay and Home action")
+            return
+        }
         if(seconds>0)pauseJob=scope.launch{var remaining=seconds;while(remaining>0){delay(1000);remaining--;button.text=remaining.toString()};button.text="Open app";ready=true;button.isEnabled=!requireIntention||!intention?.text.isNullOrBlank()}
     }
     private fun removeOverlay(){pauseJob?.cancel();overlay?.let{runCatching{getSystemService(WindowManager::class.java).removeView(it)}};overlay=null;shownReason=""}
-    override fun onInterrupt(){timer?.cancel();removeOverlay()}
-    override fun onDestroy(){EnforcementBridge.connected=false;if(receiverRegistered){unregisterReceiver(screenReceiver);receiverRegistered=false};removeOverlay();scope.cancel();super.onDestroy()}
+    override fun onInterrupt(){
+        leaveForeground()
+        // Android calls onServiceConnected again after a new binding, not after every interrupt.
+        if(state.settings.ui.v2.backgroundRules)refreshForeground()
+    }
+    override fun onUnbind(intent:Intent?):Boolean {
+        EnforcementBridge.connected=false
+        leaveForeground()
+        return super.onUnbind(intent)
+    }
+    override fun onDestroy(){
+        EnforcementBridge.connected=false
+        if(receiverRegistered){unregisterReceiver(screenReceiver);receiverRegistered=false}
+        permissionListener?.let { getSystemService(android.app.AppOpsManager::class.java).stopWatchingMode(it) }
+        permissionListener=null;leaveForeground();scope.cancel();super.onDestroy()
+    }
+    private companion object {
+        val systemPackages=setOf("com.android.systemui","com.android.settings","com.google.android.permissioncontroller","com.android.permissioncontroller","com.android.phone","com.android.server.telecom","com.android.emergency")
+    }
 }

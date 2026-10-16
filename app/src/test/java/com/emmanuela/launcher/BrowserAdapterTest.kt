@@ -26,4 +26,19 @@ class BrowserAdapterTest {
         }
         assertEquals("example.com/path",BrowserAdapters.address(browser,browser,listOf("example.com/path")))
     }
+
+    @Test fun firefoxDisplayDescriptionsAndChromeTextUseOnlyAddressControls(){
+        assertEquals("https://example.com/page",BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(description="Address bar, https://example.com/page"))).address)
+        assertEquals("example.com",BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(description="example.com"))).address)
+        assertEquals("example.com.",BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(description=" example.com. Search or enter address"))).address)
+        assertEquals("example.com/path",BrowserAdapters.inspect("com.android.chrome","com.android.chrome",listOf(BrowserAdapters.Field(text="example.com/path"))).address)
+        assertEquals(BrowserAdapters.Unavailable.UNREADABLE_ADDRESS,BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(description="Search or enter address"))).unavailable)
+        assertNull(BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(description="example.com other.example.com"))).address)
+    }
+    @Test fun reportsDistinctFailuresAndNeverBlocksAnAddressStillBeingTyped(){
+        assertEquals(BrowserAdapters.Unavailable.UNSUPPORTED_BROWSER,BrowserAdapters.inspect("unsupported","unsupported",emptyList()).unavailable)
+        assertEquals(BrowserAdapters.Unavailable.FOREIGN_WINDOW,BrowserAdapters.inspect(browser,"com.android.settings",emptyList()).unavailable)
+        assertEquals(BrowserAdapters.Unavailable.MISSING_ADDRESS_FIELD,BrowserAdapters.inspect(browser,browser,emptyList()).unavailable)
+        assertEquals(BrowserAdapters.Unavailable.EDITING_ADDRESS,BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(text="example.com",editing=true))).unavailable)
+    }
 }

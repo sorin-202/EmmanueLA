@@ -19,8 +19,20 @@ object FocusWindows {
         return (g.breakStartedAt>0 && epoch>=g.breakStartedAt && epoch<g.breakUntil)||g.windows.any{it.mode=="Break"&&active(it,now)}
     }
     fun strict(g:FocusGroup,now:ZonedDateTime)=scheduledStrict(g,now)||(g.blockAlways&&!onBreak(g,now))
-    fun host(input:String):String?=runCatching{val raw=input.trim().lowercase();val uri=URI(if(raw.contains("://"))raw else "https://$raw");uri.host?.removeSuffix(".")?.takeIf{it.contains('.')&&!it.contains(' ')}}.getOrNull()
-    fun matches(g:FocusGroup,url:String):Boolean{val actualHost=host(url)?:return false;return g.websites.any{site->val d=host(site);d!=null&&(actualHost==d||actualHost.endsWith(".$d"))}||g.keywords.any{url.contains(it,ignoreCase=true)}}
+    /** Normalize only HTTP(S) hosts, without credentials, wildcards or path confusion. */
+    fun host(input:String):String?=runCatching {
+        val raw=input.trim()
+        require(raw.length in 1..8192 && raw.none { it.isWhitespace() || it.isISOControl() || it == '\\' })
+        val uri=URI(if(raw.contains("://"))raw else "https://$raw")
+        require(uri.scheme.lowercase() in setOf("http","https") && uri.rawUserInfo==null)
+        val authority=uri.rawAuthority ?: return@runCatching null
+        require(authority.count { it==':' }<=1)
+        if(':' in authority)require(authority.substringAfter(':').toIntOrNull()?.let { it in 0..65535 }==true)
+        val host=uri.host ?: authority.substringBefore(':')
+        val normalized=java.net.IDN.toASCII(host.removeSuffix("."),java.net.IDN.USE_STD3_ASCII_RULES).lowercase()
+        normalized.takeIf { it.length<=253 && it.contains('.') && it.split('.').all { part -> part.length in 1..63 } }
+    }.getOrNull()
+    fun matches(g:FocusGroup,url:String):Boolean{val actualHost=host(url)?:return false;return g.websites.any{site->val d=host(site);d!=null&&(actualHost==d||actualHost.endsWith(".$d"))}||g.keywords.any{keyword->url.contains(keyword,ignoreCase=true)||runCatching{java.net.URLDecoder.decode(url,"UTF-8").contains(keyword,ignoreCase=true)}.getOrDefault(false)}}
     fun nextBoundary(g:FocusGroup,now:ZonedDateTime):Long?{
         val windows=g.windows+if(g.schedule)listOf(FocusWindow(g.days,g.startMinute,g.endMinute,"Strict block"))else emptyList()
         val breakDelay=(g.breakUntil-now.toInstant().toEpochMilli()).takeIf{g.breakStartedAt>0&&now.toInstant().toEpochMilli()>=g.breakStartedAt&&it>0}

@@ -1,30 +1,40 @@
-# Website rule capabilities
+# Website rules and foreground enforcement
 
-Website rules are **BEST-EFFORT** overall. They inspect an address field exposed by a selected browser through Android Accessibility. They are not a VPN, DNS filter or network firewall. A browser update, private mode, hidden toolbar, another window or an inaccessible address can prevent detection. App-wide rules remain a separate option.
+Website filtering uses Android Accessibility to inspect **only the address control of a selected browser**. It displays a blocking Accessibility overlay for a matching active rule. It does not intercept network requests. Browser versions, private modes, hidden toolbars and inaccessible windows can prevent detection; there is no universal browser support claim.
 
-No browser is currently classified RELIABLE across versions and modes. Only HTTP(S) addresses without credentials, with a valid host and at most 8192 characters, are accepted. The active root must belong to the expected browser package. Page text and localized accessibility descriptions are not treated as addresses. Unsupported/unreadable screens show a diagnostic, not a claim of successful website blocking. The last diagnostic remains visible in Live the Moment when returning Home; it describes the last check, not the current screen.
+## Implementation and root corrections
 
-## Evidence (2026-10-05)
+The former service waited for a new `TYPE_WINDOW_STATE_CHANGED` event. On connection, permission enable or restart while an app was already open, it could have no foreground package to evaluate. It now reconciles actual application windows on connection, rule enable, window changes and screen unlock. A single timer schedules the next rule/usage boundary. Usage Access changes have an AppOps callback. There is no foreground polling loop. Android owns Accessibility service rebinding after reboot; rules are loaded from local persistence after unlock. Force-stop, permission revocation and manufacturer battery controls can interrupt enforcement.
 
-| Browser / mode | Classification | Evidence and limits |
+The former browser reader used only legacy resource IDs and `text`. Firefox's Compose address control can instead expose an `ADDRESSBAR_URL_BOX` resource tag and its address in `contentDescription`. The adapter now recognizes that exact tag, with a bounded search of app chrome metadata that skips WebView/GeckoView content. It reads no arbitrary page-node text. Display descriptions must contain one unambiguous valid HTTP(S) address token. Focused editable address controls wait for navigation, so typing a blocked domain is not itself treated as visiting it.
+
+Application and website groups share package targeting and usage accounting. A mixed app/site group includes the current browser in its usage total. Android does not expose per-site usage totals: website daily/session allowances use browser usage, including unrelated sites. A rule boundary that ends a block now removes an existing overlay; per-group monotonic session anchors prevent adding time twice when a session rule becomes active while the app remains open.
+
+## Adapter coverage
+
+| Browser packages | Address controls | Runtime verification required |
 |---|---|---|
-| Firefox 157.0, normal tab, API35 x86_64 | UNSUPPORTED address source | Loaded `https://example.com`. Display toolbar has Compose tag `ADDRESSBAR_URL_BOX`, empty text and localized description ` example.com. Search or enter address`. Legacy resource IDs are absent. Do not parse that hint as a URL. |
-| Firefox 157.0, new-tab screen | UNSUPPORTED address source | Same tag exposes `Search`, not an address. |
-| Firefox 157.0, private mode | UNSUPPORTED / not validated | No support claim; private-mode runtime validation not executed. |
-| Older Firefox address fields | BEST-EFFORT, not runtime validated | Legacy `mozac_browser_toolbar_url_view` / `url_bar` hints retained. |
-| Chrome / Chrome Beta / Brave / Edge | BEST-EFFORT, not runtime validated | Existing `url_bar` hints retained. No official compatible test APK installed in this environment. |
-| Samsung Internet | BEST-EFFORT, not runtime validated | Existing location-bar hints retained; no compatible test fixture installed. |
-| Opera / other browsers | UNSUPPORTED | No address adapter. |
+| Chrome / Chrome Beta (`com.android.chrome`, `com.chrome.beta`) | `url_bar` | Normal and private tabs; collapsed/expanded bar; current installed version |
+| Brave (`com.brave.browser`) | `url_bar` | Same; not assumed equivalent to Chrome |
+| Edge (`com.microsoft.emmx`) | `url_bar` | Same; not assumed equivalent to Chrome |
+| Firefox (`org.mozilla.firefox`) | Legacy `mozac_browser_toolbar_url_view`, `mozac_browser_toolbar_edit_url_view`, `url_bar`; Compose `ADDRESSBAR_URL_BOX` | Text and display-description variants; private mode; GeckoView/toolbar versions |
+| Samsung Internet (`com.sec.android.app.sbrowser`) | `location_bar_edit_text`, `location_bar_text_view` | Real Samsung device/current version; private mode |
+| Opera / other packages | None | Unsupported; no website-enforcement claim |
 
-Shorts, Reels and in-app feed filtering are UNSUPPORTED; no semantic detection is implemented or claimed.
+These are implemented adapters, not a matrix of physically verified browser versions. Prior reports and old passing tests are not evidence of current browser behavior. Current execution results belong in the task's validation report.
 
-## Test fixture provenance
+## Validation and truthful diagnostics
 
-Firefox obtained from the [official Mozilla archive](https://archive.mozilla.org/pub/fenix/releases/157.0/android/fenix-157.0-android-x86_64/). APK: `fenix-157.0.multi.android-x86_64.apk`, 139,424,210 bytes, versionCode 2016186462. Android apksigner verification passed; signer organization Mozilla Corporation, Release Engineering.
+`BrowserAdapterTest` verifies supported address samples, Firefox descriptions, package ownership, editing states, ambiguous labels, bounded input and unsafe addresses. `FocusTargetsTest` checks mixed-group accounting, domain/subdomain boundaries, IDN normalization, encoded URL keywords, schedules and Break. Existing Focus allowance, Break, session and deadline tests cover shared rule semantics.
 
-- APK SHA256: `85CBD0D56C571B7EEC8E34A76A4EDEBAC713AEC773491D41C6A5915BEB2F9354`
-- Signing certificate SHA256: `a78b62a5165b4494b2fead9e76a280d22d937fee6251aece599446b2ea319b04`
+`FocusServiceTest` uses a separate APK fixture to exercise the real Accessibility service: an app already open before permission enable, live rule/Break/schedule changes, Usage Access revocation/restoration, service permission revocation/rebind, and an external task launch. It also reads a real Android address-control fixture through Accessibility. This is not a substitute for testing an official browser.
 
-An onboarding input-dispatch ANR recovered after force-stop/relaunch. Default-browser request was cancelled; no account used. Fixture is ignored and not redistributed. `BrowserDiagnosticsTest` requires this exact version and completed onboarding; absence is reported as a skipped prerequisite, not a pass. Unit tests exercise root/package mismatch, unknown adapters, bounds, invalid addresses and unsafe schemes. Android validation results are recorded in ENGINEERING_VALIDATION.md.
+`BrowserDiagnosticsTest` requires an installed supported browser with first-run onboarding completed. It opens an example HTTP(S) navigation, requires an address to become readable, then requires the actual website-rule overlay to appear in Android's accessibility tree. It no longer passes merely because Firefox reports an unreadable address. Absence of a browser is a skipped prerequisite, not a successful browser test. No browser APK is bundled or redistributed.
 
-Android documents that [the active accessibility root may be null](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#getRootInActiveWindow()). Detection cannot guarantee observation of every navigation. No external browser source was copied.
+Live the Moment shows Android permission state separately from current service connection. Browser diagnostics distinguish unsupported package, foreign window, missing control, address editing, unreadable value and tree query failure. The last browser check remains visible when returning Home. An overlay is reported only after WindowManager accepts it. A successful Home API call is reported as **requested**, not as proof that Android navigated. A failed overlay/Home action is visible as a failure. No URLs or page contents are persisted or transmitted by this service.
+
+## Physical-device acceptance still required
+
+For each browser/version under test, record normal/private mode, address-bar visibility, direct navigation/redirect/back/forward behavior, matching domains and subdomains, unrelated domains, keyword encoding, and actual overlay visibility. For app enforcement, test already-open apps, Recents, another launcher, notifications and deep links; daily/session deadlines, warnings/grace, schedule boundaries, Break expiry, Usage Access/Accessibility revocation, reboot and manufacturer battery restrictions. Test multiwindow behavior separately: the implementation targets the focused application window.
+
+Android system permission, lock-screen and known emergency-system packages remain reachable. A user can disable Accessibility or force-stop the launcher. Unreadable browser addresses cannot be selectively blocked. Shorts, Reels and in-app feed removal are unsupported. Android documents that [the accessibility root can be null](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService#getRootInActiveWindow()).
