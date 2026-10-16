@@ -38,7 +38,7 @@ fun widgetTextStyle(data:LauncherData,id:String,scaleFactor:Float=1f):TextStyle 
     val font=if(s.font=="Inherit")if(e.homeStyleOverride&&e.homeFont!="Inherit")e.homeFont else p.font else s.font
     val italic=s.italic?:if(e.homeStyleOverride)e.homeItalic else p.ui.italic
     val weight=if(s.weight=="Inherit")weightOf(if(e.homeStyleOverride&&e.homeTextWeight!="Inherit")e.homeTextWeight else if(p.bold)"Bold" else e.textWeight)else weightOf(s.weight)
-    return base.copy(fontFamily=launcherFont(font,p.customFont,base.fontFamily,italic,weight),fontStyle=if(italic)FontStyle.Italic else FontStyle.Normal,fontWeight=weight,fontSize=base.fontSize*s.scale*scaleFactor,fontSynthesis=FontSynthesis.All,
+    return base.copy(fontFamily=launcherFont(font,p.customFont,base.fontFamily,italic,weight),fontStyle=if(italic)FontStyle.Italic else FontStyle.Normal,fontWeight=weight,fontSize=base.fontSize*s.scale*scaleFactor,lineHeight=base.lineHeight*s.scale*scaleFactor,fontSynthesis=FontSynthesis.All,
         textAlign=when(s.alignment){"Center"->TextAlign.Center;"Right"->TextAlign.Right;else->TextAlign.Left},letterSpacing=s.letterSpacing.sp)
 }
 fun Modifier.widgetBackground(s:WidgetStyle):Modifier {
@@ -68,7 +68,7 @@ private fun WidgetStylePreview(id:String,data:LauncherData,style:WidgetStyle){
             val textStyle=widgetTextStyle(preview,id,p.ui.experience.widgetScales[id]?:1f)
             val color=if(style.color==0L)inheritedColor else Color(style.color)
             val modifier=Modifier.padding(top=32.dp,bottom=12.dp).semantics{contentDescription="${widgetName(id)} style preview"}.widgetFrame(style).widgetBackground(style).widgetPadding(style)
-            if(id=="clock")ClockFace(1_759_431_660_000L,p.ui.v2.copy(clockSeconds=false),color,textStyle,modifier)
+            if(id=="clock")ClockFace(1_759_431_660_000L,p.ui.v2,color,textStyle,modifier)
             else Text(when(id){"date"->"Thu, 1 Oct";"battery"->"82%";"usage"->"1h 23m";"weather"->"22°C · Clear";else->"44.427, 26.103"},style=textStyle,color=color,modifier=modifier)
         }
     }

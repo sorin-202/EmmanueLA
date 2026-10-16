@@ -58,12 +58,20 @@ class WidgetStyleFlowTest {
         try{
             repository.restore(LauncherData(settings=Preferences(showDate=false,showBattery=false,favoriteCount=0,
                 ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false,homeStyleOverride=true,homeTextScale=1.4f,homeFont="Monospace"),
-                    v2=V2Preferences(widgetStyles=mapOf("clock" to WidgetStyle(font="Monospace",width=280f)))))))
+                    v2=V2Preferences(clockSeconds=true,widgetStyles=mapOf("clock" to WidgetStyle(font="Monospace",scale=1.5f,width=280f)))))))
             ActivityScenario.launch(MainActivity::class.java).use{
-                val home=android.graphics.Rect();find("Clock").getBoundsInScreen(home)
-                assertTrue(home.height()>0)
+                fun clockBounds(label:String):android.graphics.Rect {
+                    val node=find(label)
+                    assertTrue("$label preserves the configured seconds format",nodes(node).any{it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}:\\d{2}"))==true})
+                    return android.graphics.Rect().also{node.getBoundsInScreen(it)}
+                }
+                val home=clockBounds("Clock")
+                val density=instrumentation.targetContext.resources.displayMetrics.density
+                // This narrow, enlarged HH:mm:ss clock wraps over three lines. Its
+                // measured height must leave room for the enlarged text on every line.
+                assertTrue("Enlarged multiline clock must preserve readable line spacing",home.height()/density>=350f)
                 click("Launcher settings");click("Home");click("Manage widgets",scroll=true);click("Clock");click("Style")
-                val preview=android.graphics.Rect();find("Clock style preview").getBoundsInScreen(preview)
+                val preview=clockBounds("Clock style preview")
                 assertEquals("Preview uses the real Home text size and line height",home.height().toFloat(),preview.height().toFloat(),1f)
                 assertEquals(home.width().toFloat(),preview.width().toFloat(),1f)
             }
