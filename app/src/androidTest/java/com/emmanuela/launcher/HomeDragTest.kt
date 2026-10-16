@@ -50,15 +50,15 @@ class HomeDragTest {
         instrumentation.waitForIdleSync()
     }
 
-    private fun fixture()=LauncherData(settings=Preferences(showDate=false,showBattery=false,favoriteCount=0,
-        ui=UiPreferences(bottomShortcuts=false,experience=ExperiencePreferences(language="en",autoLaunch=false),v2=V2Preferences(gesturesEnabled=false))))
+    private fun fixture(gesturesEnabled:Boolean=false)=LauncherData(settings=Preferences(showDate=false,showBattery=false,favoriteCount=0,
+        ui=UiPreferences(bottomShortcuts=false,experience=ExperiencePreferences(language="en",autoLaunch=false),v2=V2Preferences(gesturesEnabled=gesturesEnabled))))
 
     @Test fun longPressDragReleaseCommitsOnlyAfterDropAndSurvivesRecreation()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
         var observer:Job?=null
         try {
-            repository.restore(fixture())
+            repository.restore(fixture(gesturesEnabled=true))
             val observed=MutableStateFlow<LauncherData?>(null)
             val emissions=java.util.concurrent.atomic.AtomicInteger()
             observer=launch(Dispatchers.IO){repository.data.collect{emissions.incrementAndGet();observed.value=it}}
@@ -91,6 +91,10 @@ class HomeDragTest {
                 assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
                 // A quick swipe over a widget must never acquire placement.
                 drag(from,PointF(from.x+40f,from.y+100f),hold=false)
+                assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
+                // Moving first, then pausing, is still a scroll rather than a hold-and-drag.
+                drag(from,PointF(from.x+40f,from.y+20f),hold=false){SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+100L)}
+                assertEquals(from.x,clockCenter().x,1f);assertEquals(from.y,clockCenter().y,1f)
                 assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
             }
         }finally{repository.restore(original)}

@@ -53,7 +53,7 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Composable
-fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,action:(String)->Unit,modifier:Modifier=Modifier,arranging:Boolean=false) {
+fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,action:(String)->Unit,modifier:Modifier=Modifier,arranging:Boolean=false,draggingChanged:(Boolean)->Unit={}) {
     val p=data.settings;val u=p.ui;val v=u.v2
     val context=LocalContext.current;val density=LocalDensity.current
     val time by model.screenTime.collectAsStateWithLifecycle()
@@ -137,15 +137,15 @@ fun HomeWidgets(data:LauncherData,model:LauncherViewModel,now:Long,battery:Int,a
                     }
                 }
             }else Modifier.homeItemDrag(id,widgetName(id),{action(target)},{options=true},
-                start={dragOrigin=point;dragging=true},
+                start={dragOrigin=point;dragging=true;draggingChanged(true)},
                 move={amount->point=Offset((point.x+amount.x/density.density).coerceIn(0f,latestMaxX),(point.y+amount.y/density.density).coerceIn(0f,latestMaxY))},
                 drop={
                     val final=HomePlacement.dropped(WidgetPlacement(point.x,point.y),latestMaxX,latestMaxY,v.widgetGrid)
                     // No DataStore writes occur while the pointer moves.
                     if(point!=dragOrigin){point=Offset(final.x,final.y);if(point!=dragOrigin)currentSave(point)}
-                    dragging=false
+                    dragging=false;draggingChanged(false)
                 },
-                cancel={point=dragOrigin;dragging=false})
+                cancel={point=dragOrigin;dragging=false;draggingChanged(false)})
             if(options)AlertDialog(onDismissRequest={options=false},title={Text(widgetName(id))},text={Column{
                 ChoiceRow("Size",if(scale<.9f)"Small" else if(scale>1.2f)"Large" else "Medium",listOf("Small","Medium","Large")){value->scale=when(value){"Small"->.75f;"Large"->1.5f;else->1f};currentScaleSave(scale)}
                 ChoiceRow("Alignment",u.experience.widgetAlignments[id]?:"Left",listOf("Left","Center","Right")){value->

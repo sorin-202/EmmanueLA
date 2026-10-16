@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
@@ -107,6 +109,9 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
     val taps = remember(scope) { HomeTapRouter(scope) }
     val config = LocalViewConfiguration.current
     val density = LocalDensity.current
+    var shortcutPicker by remember { mutableStateOf(false) }
+    var homeItemBounds by remember { mutableStateOf(IntSize.Zero) }
+    var widgetDragging by remember { mutableStateOf(false) }
     val latestAction by rememberUpdatedState(action)
     val latestSettings by rememberUpdatedState(settings)
     val latestPrefs by rememberUpdatedState(p)
@@ -150,10 +155,16 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
                         BottomShortcut(u.v2.shortcutMode,u.v2.rightVector,actionName(u.rightShortcut,apps),baseColor,u.bottomBarTextScale,u.bottomBarWeight,u.bottomBarPadding){action(u.rightShortcut)}
                     }
                     // Always reachable even if every custom gesture/shortcut is reassigned.
-                    Text(localized("Settings"), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).homeClick("Launcher settings", settings).padding(12.dp))
+                    Row(Modifier.align(Alignment.CenterHorizontally),verticalAlignment=Alignment.CenterVertically) {
+                        Text(localized("Settings"), style = MaterialTheme.typography.labelSmall, modifier = Modifier.heightIn(min = 48.dp).homeClick("Launcher settings", settings).padding(12.dp))
+                        if(!arranging)Text(localized("+ App"),style=MaterialTheme.typography.labelSmall,modifier=Modifier.heightIn(min=48.dp).homeClick("Add app to Home",{shortcutPicker=true}).padding(12.dp))
+                    }
                 }
             }
-            HomeWidgets(data,model,now,battery,action,Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(bottom=100.dp),arranging)
+            val itemsModifier=Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(bottom=100.dp).onSizeChanged{homeItemBounds=it}
+            HomeWidgets(data,model,now,battery,action,itemsModifier.zIndex(if(widgetDragging)1f else 0f),arranging){widgetDragging=it}
+            if(!arranging)CompositionLocalProvider(LocalContentColor provides baseColor) { HomeShortcuts(data,apps,model,launch,itemsModifier) }
+            if(shortcutPicker)HomeShortcutPicker(data,apps,model,with(density){homeItemBounds.width.toDp().value},with(density){homeItemBounds.height.toDp().value}){shortcutPicker=false}
         }
     }
 }
