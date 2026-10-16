@@ -52,6 +52,23 @@ class WidgetStyleFlowTest {
         assertTrue("Clickable: $text",node?.performAction(AccessibilityNodeInfo.ACTION_CLICK)==true)
         instrumentation.waitForIdleSync()
     }
+    @Test fun customHomeTextScaleHasMatchingPreviewAndHomeHeight()=runBlocking<Unit>{
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        try{
+            repository.restore(LauncherData(settings=Preferences(showDate=false,showBattery=false,favoriteCount=0,
+                ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false,homeStyleOverride=true,homeTextScale=1.4f,homeFont="Monospace"),
+                    v2=V2Preferences(widgetStyles=mapOf("clock" to WidgetStyle(font="Monospace",width=280f)))))))
+            ActivityScenario.launch(MainActivity::class.java).use{
+                val home=android.graphics.Rect();find("Clock").getBoundsInScreen(home)
+                assertTrue(home.height()>0)
+                click("Launcher settings");click("Home");click("Manage widgets",scroll=true);click("Clock");click("Style")
+                val preview=android.graphics.Rect();find("Clock style preview").getBoundsInScreen(preview)
+                assertEquals("Preview uses the real Home text size and line height",home.height().toFloat(),preview.height().toFloat(),1f)
+                assertEquals(home.width().toFloat(),preview.width().toFloat(),1f)
+            }
+        }finally{repository.restore(original)}
+    }
     @Test fun importIsPreviewedBeforeApplyAndPersistsOnlySelectedWidget()=runBlocking<Unit>{
         val context=instrumentation.targetContext
         val repository=ConfigurationRepository(context)

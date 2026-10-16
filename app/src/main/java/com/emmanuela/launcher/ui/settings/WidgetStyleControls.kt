@@ -4,6 +4,7 @@ import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.*
 import com.emmanuela.launcher.ui.appearance.launcherFont
 import com.emmanuela.launcher.ui.appearance.weightOf
+import com.emmanuela.launcher.ui.appearance.styledTypography
 import com.emmanuela.launcher.ui.components.localized
 import com.emmanuela.launcher.ui.home.ClockFace
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.style.TextAlign
@@ -50,14 +53,24 @@ fun Modifier.widgetPadding(s:WidgetStyle)=padding(horizontal=s.horizontalPadding
 private fun WidgetStylePreview(id:String,data:LauncherData,style:WidgetStyle){
     val preview=data.copy(settings=data.settings.copy(ui=data.settings.ui.copy(v2=data.settings.ui.v2.copy(widgetStyles=data.settings.ui.v2.widgetStyles+(id to style)))))
     val p=preview.settings
+    // HomeScreen applies its typography override before calling widgetTextStyle. Preview
+    // must use that same typography helper so both font size and line height agree.
+    val e=p.ui.experience;val inherited=MaterialTheme.typography
+    val family=launcherFont(if(e.homeFont=="Inherit")p.font else e.homeFont,p.customFont,inherited.bodyLarge.fontFamily,
+        if(e.homeStyleOverride)e.homeItalic else p.ui.italic,if(e.homeTextWeight=="Inherit")inherited.bodyLarge.fontWeight?:FontWeight.Normal else weightOf(e.homeTextWeight))
+    val typography=remember(inherited,family,e.homeStyleOverride,e.homeTextWeight,e.homeItalic,e.homeTextScale){
+        if(!e.homeStyleOverride)inherited else styledTypography(inherited,family,if(e.homeTextWeight=="Inherit")null else weightOf(e.homeTextWeight),e.homeItalic,e.homeTextScale)
+    }
     val inheritedColor=if(p.wallpapers.isNotEmpty())Color.White else MaterialTheme.colorScheme.onBackground
     Box(Modifier.fillMaxWidth().heightIn(min=180.dp).background(if(p.wallpapers.isNotEmpty())Color(0xFF202028)else MaterialTheme.colorScheme.background,RoundedCornerShape(16.dp)).border(1.dp,MaterialTheme.colorScheme.outline,RoundedCornerShape(16.dp)).clipToBounds(),contentAlignment=Alignment.Center){
         Text(localized("Preview"),Modifier.align(Alignment.TopStart).padding(12.dp),style=MaterialTheme.typography.labelSmall,color=inheritedColor)
-        val textStyle=widgetTextStyle(preview,id,p.ui.experience.widgetScales[id]?:1f)
-        val color=if(style.color==0L)inheritedColor else Color(style.color)
-        val modifier=Modifier.padding(top=32.dp,bottom=12.dp).widgetFrame(style).widgetBackground(style).widgetPadding(style)
-        if(id=="clock")ClockFace(1_759_431_660_000L,p.ui.v2.copy(clockSeconds=false),color,textStyle,modifier)
-        else Text(when(id){"date"->"Thu, 1 Oct";"battery"->"82%";"usage"->"1h 23m";"weather"->"22°C · Clear";else->"44.427, 26.103"},style=textStyle,color=color,modifier=modifier)
+        MaterialTheme(typography=typography){
+            val textStyle=widgetTextStyle(preview,id,p.ui.experience.widgetScales[id]?:1f)
+            val color=if(style.color==0L)inheritedColor else Color(style.color)
+            val modifier=Modifier.padding(top=32.dp,bottom=12.dp).semantics{contentDescription="${widgetName(id)} style preview"}.widgetFrame(style).widgetBackground(style).widgetPadding(style)
+            if(id=="clock")ClockFace(1_759_431_660_000L,p.ui.v2.copy(clockSeconds=false),color,textStyle,modifier)
+            else Text(when(id){"date"->"Thu, 1 Oct";"battery"->"82%";"usage"->"1h 23m";"weather"->"22°C · Clear";else->"44.427, 26.103"},style=textStyle,color=color,modifier=modifier)
+        }
     }
 }
 
