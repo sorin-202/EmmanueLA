@@ -15,6 +15,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <queries>
         <intent><action android:name="android.intent.action.WEB_SEARCH" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="https" /></intent>
         <package android:name="com.android.settings" />
         <package android:name="com.google.android.apps.wellbeing" />
         <package android:name="com.samsung.android.forest" />

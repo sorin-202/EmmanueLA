@@ -121,7 +121,7 @@ object ConfigurationCodec {
         return LauncherData(migrated,favorites,folders,metadata,policies,FocusCodec.decode(root.optJSONArray("focusGroups")?:JSONArray()))
     }
     // Media grants and font files cannot travel between devices in a JSON backup.
-    fun portable(data: LauncherData) = data.copy(policies=data.policies.mapValues{(_,p)->p.copy(notificationRule=p.notificationRule.copy(suppressUntil=0))},focusGroups=data.focusGroups.map{it.copy(breakStartedAt=0,breakUntil=0)}, settings = data.settings.copy(wallpapers = emptyList(), customFont = "", font = if (data.settings.font == "Custom") "Sans" else data.settings.font, dailyWallpaper = false, ui = data.settings.ui.copy(v2=data.settings.ui.v2.copy(wallpaperAlbum="",photoStyles=emptyMap()))))
+    fun portable(data: LauncherData) = data.copy(folders=data.folders.map{it.copy(imageUri="")},policies=data.policies.mapValues{(_,p)->p.copy(notificationRule=p.notificationRule.copy(suppressUntil=0))},focusGroups=data.focusGroups.map{it.copy(breakStartedAt=0,breakUntil=0)}, settings = data.settings.copy(wallpapers = emptyList(), customFont = "", font = if (data.settings.font == "Custom") "Sans" else data.settings.font, dailyWallpaper = false, ui = data.settings.ui.copy(v2=data.settings.ui.v2.copy(wallpaperAlbum="",photoStyles=emptyMap()))))
 }
 class ConfigurationRepository(private val context: Context) {
     private val store = context.applicationContext.emaStore

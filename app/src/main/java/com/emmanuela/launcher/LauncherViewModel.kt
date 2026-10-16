@@ -150,7 +150,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     _data.value = it; ready.value = true
                     NotificationBadges.enabled.value=it.settings.ui.v2.showBadges
                     NotificationBadges.muted.value=it.policies.filterValues{p->p.badgesMuted||p.hidden}.keys
-                    val enabled = it.settings.ui.v2.notificationFilter && it.settings.ui.experience.digestEnabled && it.policies.values.any { p -> p.notifications == NotificationMode.DIGEST }
+                    val enabled = it.settings.ui.v2.notificationFilter && it.settings.ui.experience.digestEnabled
                     if (digestScheduled != enabled) {
                         getApplication<Application>().updateDigestWork(enabled); digestScheduled = enabled
                     }
@@ -279,12 +279,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         repository.update { state -> state.copy(folders = if (state.folders.any { it.id == folder.id })
             state.folders.map { if (it.id == folder.id) secured else it } else state.folders + secured) }
         if (secured.isProtected) unlockedFolders.value += secured.id
+        com.emmanuela.launcher.data.FolderImageGrants.cleanup(getApplication<Application>(), listOf(previous?.imageUri.orEmpty()))
     }
-    suspend fun deleteFolder(id: String): Boolean = write { repository.update { state ->
-        val folder = state.folders.firstOrNull { it.id == id }
-        require(folder == null || !folder.isProtected || id in unlockedFolders.value)
-        state.copy(folders = state.folders.filterNot { it.id == id })
-    } }
+    suspend fun deleteFolder(id: String): Boolean = write {
+        val previousImage = _data.value.folders.firstOrNull { it.id == id }?.imageUri.orEmpty()
+        repository.update { state ->
+            val folder = state.folders.firstOrNull { it.id == id }
+            require(folder == null || !folder.isProtected || id in unlockedFolders.value)
+            state.copy(folders = state.folders.filterNot { it.id == id })
+        }
+        com.emmanuela.launcher.data.FolderImageGrants.cleanup(getApplication<Application>(), listOf(previousImage))
+    }
     suspend fun saveFavorites(favorites: List<Favorite>): Boolean = write {
         require(favorites.size <= 8)
         repository.update { it.copy(favorites = favorites) }
