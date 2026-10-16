@@ -34,7 +34,7 @@ class HomeDragTest {
         throw AssertionError("Clock not found on normal Home")
     }
 
-    private fun drag(from:PointF,to:PointF,cancel:Boolean=false,hold:Boolean=true,moving:()->Unit={}) {
+    private fun drag(from:PointF,to:PointF,cancel:Boolean=false,hold:Boolean=true,steps:Int=15,moving:()->Unit={}) {
         val down=SystemClock.uptimeMillis()
         fun inject(action:Int,point:PointF){
             val properties=MotionEvent.PointerProperties().apply{id=0;toolType=MotionEvent.TOOL_TYPE_FINGER}
@@ -44,7 +44,7 @@ class HomeDragTest {
         }
         inject(MotionEvent.ACTION_DOWN,from)
         if(hold)SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+100L)
-        for(step in 1..15){val n=step/15f;inject(MotionEvent.ACTION_MOVE,PointF(from.x+(to.x-from.x)*n,from.y+(to.y-from.y)*n));SystemClock.sleep(16)}
+        for(step in 1..steps){val n=step/steps.toFloat();inject(MotionEvent.ACTION_MOVE,PointF(from.x+(to.x-from.x)*n,from.y+(to.y-from.y)*n));SystemClock.sleep(16)}
         moving()
         inject(if(cancel)MotionEvent.ACTION_CANCEL else MotionEvent.ACTION_UP,to)
         instrumentation.waitForIdleSync()
@@ -95,6 +95,21 @@ class HomeDragTest {
                 // Moving first, then pausing, is still a scroll rather than a hold-and-drag.
                 drag(from,PointF(from.x+40f,from.y+20f),hold=false){SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+100L)}
                 assertEquals(from.x,clockCenter().x,1f);assertEquals(from.y,clockCenter().y,1f)
+                assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
+            }
+        }finally{repository.restore(original)}
+    }
+    @Test fun ordinaryWidgetTapRetainsConfiguredAction()=runBlocking<Unit> {
+        val repository=ConfigurationRepository(instrumentation.targetContext)
+        val original=repository.data.first()
+        try {
+            val state=fixture(gesturesEnabled=true)
+            repository.restore(state.copy(settings=state.settings.copy(ui=state.settings.ui.copy(clockAction="settings"))))
+            ActivityScenario.launch(MainActivity::class.java).use {
+                val point=clockCenter();drag(point,point,hold=false,steps=1)
+                val deadline=SystemClock.uptimeMillis()+5000
+                while(SystemClock.uptimeMillis()<deadline&&!nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.isVisibleToUser&&it.text?.toString()=="Home"})SystemClock.sleep(50)
+                assertTrue("A normal tap opens its configured Settings action",nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.isVisibleToUser&&it.text?.toString()=="Home"})
                 assertTrue(repository.data.first().settings.ui.v2.widgetPositions.isEmpty())
             }
         }finally{repository.restore(original)}
