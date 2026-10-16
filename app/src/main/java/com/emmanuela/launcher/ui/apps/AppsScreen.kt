@@ -7,6 +7,9 @@ import com.emmanuela.launcher.data.AppSearch
 import com.emmanuela.launcher.data.AppSearchIndex
 import com.emmanuela.launcher.data.LaunchableApp
 import com.emmanuela.launcher.data.Preferences
+import com.emmanuela.launcher.data.WebSearchHistory
+import com.emmanuela.launcher.data.WebSearchHistoryRepository
+import com.emmanuela.launcher.data.WebSearchEngine
 import com.emmanuela.launcher.ui.components.localized
 import com.emmanuela.launcher.ui.navigation.ownsGesture
 
@@ -74,6 +77,10 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
                     launch: (LaunchableApp) -> Unit, rememberTags: (String,LaunchableApp) -> Unit, home: () -> Unit, folders: () -> Unit, settings: () -> Unit, editApp: (String) -> Unit, hidden: () -> Unit, openFolder: (String) -> Unit, action: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
+    val webHistory = remember(context) { WebSearchHistoryRepository(context.applicationContext) }
+    val recentWebSearches by webHistory.queries.collectAsStateWithLifecycle(initialValue = emptyList())
+    val webSearchEngine by webHistory.engine.collectAsStateWithLifecycle(initialValue = WebSearchEngine.ANDROID_DEFAULT)
+    val searchScope = rememberCoroutineScope()
     val contacts = remember(context) { com.emmanuela.launcher.platform.ContactSearchRepository(context.applicationContext) }
     var permissionRevision by remember { mutableIntStateOf(0) }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -116,6 +123,22 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val manager = LocalFocusManager.current
+    val executeWebSearch: (String) -> Unit = { text ->
+        val webQuery = WebSearchHistory.normalize(text)
+        if (webQuery.isNotEmpty() && webQuery.length <= WebSearchHistory.MAX_QUERY_LENGTH) {
+            manager.clearFocus(); keyboard?.hide()
+            searchScope.launch {
+                try { webHistory.record(webQuery) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: java.io.IOException) { model.error.value = "Could not save web search history." }
+                try {
+                    val intent = withContext(Dispatchers.IO) { com.emmanuela.launcher.platform.WebSearch.intent(context, webQuery, webSearchEngine) }
+                    model.launchPlatform(intent)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { model.error.value = "Could not open the web search. Check your default browser." }
+            }
+        }
+    }
     val searchSnapshot by produceState("" to index.all, index, p.ui.tagSearch, p.ui.experience.searchAliases, p.ui.experience.searchPackages, contactMode) {
         snapshotFlow { if(contactMode) "" else query }.debounce(60).mapLatest { text ->
             text to withContext(Dispatchers.Default) { index.search(text, p.ui.tagSearch, p.ui.experience.searchAliases, p.ui.experience.searchPackages) }
@@ -144,7 +167,13 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
     val accent = if (p.ui.searchColor != 0L) Color(p.ui.searchColor) else if (p.searchAccent) Color(0xFFCA6666) else MaterialTheme.colorScheme.primary
     val cursor = if (p.ui.searchCursorColor != 0L) Color(p.ui.searchCursorColor) else accent
     val field: @Composable () -> Unit = {
-        CursorSearchField(query,{query=it},p,Modifier.fillMaxWidth().focusRequester(focus).padding(vertical=8.dp).ownsGesture("app-search"))
+        CursorSearchField(query,{query=it},p,Modifier.fillMaxWidth().focusRequester(focus).padding(vertical=8.dp).ownsGesture("app-search"),onSearch={
+            if(query.trimStart().startsWith("/")) {
+                val webQuery = WebSearchHistory.fromInput(query)
+                if(webQuery != null) executeWebSearch(webQuery)
+                else if(query.trimStart().drop(1).isNotBlank()) model.error.value = "Enter a web search of up to ${WebSearchHistory.MAX_QUERY_LENGTH} characters."
+            }
+        })
         if (suggestions.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).ownsGesture("tag-suggestions")) {
             suggestions.forEach { tag -> TextButton(onClick = {
                 query = query.trimEnd().substringBeforeLast(' ', "").let { prefix -> if (prefix.isEmpty()) "#$tag " else "$prefix #$tag " }
@@ -163,7 +192,7 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
         if (!webMode && !contactMode && folderResults.isNotEmpty()) {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=160.dp)) {
                 items(folderResults, key={ it.id }) { folder ->
-                    TextButton(onClick={ query=""; manager.clearFocus(); keyboard?.hide(); openFolder(folder.id) }) { Text("▦ ${folder.name}") }
+                    CompactFolderSearchResult(folder) { id -> query=""; manager.clearFocus(); keyboard?.hide(); openFolder(id) }
                 }
             }
         }
@@ -175,12 +204,19 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
             }
         }
         if(webMode) {
-            val webQuery = query.trimStart().removePrefix("/").trim()
-            TextButton(enabled=webQuery.isNotEmpty(), onClick={
-                model.launchPlatform(Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, webQuery))
-                manager.clearFocus(); keyboard?.hide()
-            }) { Text(localized("Search the web") + if(webQuery.isEmpty()) "" else ": $webQuery") }
-            Spacer(Modifier.weight(1f))
+            WebSearchHistoryList(recentWebSearches, executeWebSearch, clear = {
+                searchScope.launch {
+                    try { webHistory.clear() }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: java.io.IOException) { model.error.value = "Could not clear web search history." }
+                }
+            }, modifier=Modifier.weight(1f).fillMaxWidth(), engine=webSearchEngine, chooseEngine={ engine ->
+                searchScope.launch {
+                    try { webHistory.setEngine(engine) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: java.io.IOException) { model.error.value = "Could not save the search engine." }
+                }
+            })
         } else if(contactMode) {
             if(!contactAllowed) {
                 Text(localized("Allow contacts access to search names with @."), Modifier.padding(vertical=12.dp))
@@ -200,7 +236,7 @@ fun AllApps(index: AppSearchIndex, loading: Boolean, p: Preferences, active: Boo
                     }
                 }
             }
-        } else if(p.ui.v2.treeBranch)TreeBranchList(results.apps,query,model,p.ui.experience.appIcons,{app->rememberTags(query,app);query="";launch(app)},editApp,Modifier.weight(1f).fillMaxWidth())
+        } else if(p.ui.v2.treeBranch && query.isBlank())TreeBranchList(results.apps,query,model,p.ui.experience.appIcons,{app->rememberTags(query,app);query="";launch(app)},editApp,Modifier.weight(1f).fillMaxWidth())
         else IndexedAppList(results.apps, Modifier.weight(1f).fillMaxWidth(), { app -> rememberTags(query,app);query="";launch(app) }, editApp, results, p.ui.alphabet && (query.isBlank() || (p.ui.tagSearch && AppSearch.isTagMode(query))), p.ui.alphabetAnimation, false, p.ui.experience, model)
         if (p.ui.v2.searchEnabled && p.ui.searchPosition == "Bottom") field()
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

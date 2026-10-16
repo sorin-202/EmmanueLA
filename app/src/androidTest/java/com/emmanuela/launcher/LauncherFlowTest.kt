@@ -113,7 +113,7 @@ class LauncherFlowTest {
                 click("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Vault")}))
-                click("▦ Vault");find("Unlock folder")
+                click("Folder: Vault, protected");find("Unlock folder")
                 val input=find("Password",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"test-only-password")}))
                 click("Unlock");find("Vault")
@@ -354,9 +354,13 @@ class LauncherFlowTest {
     @Test fun appListWebIntentAndControlledBreakWorkflowRender()=runBlocking {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
+        val webHistory=WebSearchHistoryRepository(instrumentation.targetContext)
+        val originalHistory=webHistory.queries.first()
         val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
         var observer:kotlinx.coroutines.Job?=null
         try {
+            webHistory.clear()
+            webHistory.record("earlier navigation search")
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false))),
                 focusGroups=listOf(FocusGroup(id="flow",name="Test Focus",packages=setOf("com.android.camera2"),dailyMinutes=0,pause=false,blockAlways=true))))
             // Observe before the click, as in the widget/editor tests: a cold
@@ -368,7 +372,12 @@ class LauncherFlowTest {
                 find("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"/example query")}))
-                find("Search the web: example query")
+                find("Type after / and press Search")
+                find("Recent web searches")
+                find("earlier navigation search")
+                assertFalse(nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.text?.toString()=="Search the web: example query"})
+                click("Clear history")
+                kotlinx.coroutines.withTimeout(15_000){webHistory.queries.first{it.isEmpty()}}
                 click("Home")
                 click("Launcher settings")
                 click("Live the Moment",scroll=true)
@@ -383,6 +392,9 @@ class LauncherFlowTest {
                 kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil==0L}}
                 assertEquals(0L,repository.data.first().focusGroups.single().breakUntil)
             }
-        }finally{observer?.cancel();repository.restore(original)}
+        }finally{
+            observer?.cancel();repository.restore(original)
+            webHistory.clear();originalHistory.asReversed().forEach{webHistory.record(it)}
+        }
     }
 }

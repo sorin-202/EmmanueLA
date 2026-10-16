@@ -335,6 +335,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             repository.restore(LauncherData())
             DigestRepository(context).clear()
+            com.emmanuela.launcher.data.WebSearchHistoryRepository(context).reset()
             context.getSharedPreferences("weather_cache",android.content.Context.MODE_PRIVATE).edit().clear().commit()
             java.io.File(context.filesDir,"custom-font.ttf").delete()
             context.contentResolver.persistedUriPermissions.forEach { permission ->
