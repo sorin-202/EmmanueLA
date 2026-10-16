@@ -5,13 +5,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class NotificationScope { ALWAYS, SCHEDULE, FOCUS }
+enum class SpamMode { OFF, CONSERVATIVE, STRONG }
 data class NotificationRule(
     val scope:NotificationScope=NotificationScope.ALWAYS,
     val days:Set<Int> = (1..7).toSet(),
     val startMinute:Int=22*60,
     val endMinute:Int=7*60,
     val keywords:Set<String> = emptySet(),
-    val suppressUntil:Long=0
+    val suppressUntil:Long=0,
+    val spamMode:SpamMode?=null,
+    val spamAllowed:Boolean=false,
+    val spamKeywords:Set<String> = emptySet(),
+    val spamAllowWords:Set<String> = emptySet(),
+    val digestIntervalOverride:Boolean=false
 )
 
 /** Content is supplied lazily only for an opted-in, currently applicable keyword rule. */
@@ -22,22 +28,27 @@ object NotificationRules {
         if(now.toInstant().toEpochMilli()<rule.suppressUntil)return NotificationMode.DISMISS
         val mode=policy.notifications
         if(mode==NotificationMode.NORMAL||mode==NotificationMode.DIGEST&&!digestEnabled)return NotificationMode.NORMAL
-        val active=when(rule.scope){
-            NotificationScope.ALWAYS->true
-            NotificationScope.SCHEDULE->PolicyRules.scheduled(AppPolicy(scheduleEnabled=true,days=rule.days,startMinute=rule.startMinute,endMinute=rule.endMinute),now)
-            NotificationScope.FOCUS->groups.any{packageName in it.packages&&FocusWindows.strict(it,now)}
-        }
-        if(!active)return NotificationMode.NORMAL
+        if(!applies(rule,packageName,groups,now))return NotificationMode.NORMAL
         if(rule.keywords.isNotEmpty()){
             val text=content()
             if(rule.keywords.none{text.contains(it,ignoreCase=true)})return NotificationMode.NORMAL
         }
         return mode
     }
+    fun applies(rule:NotificationRule,packageName:String,groups:List<FocusGroup>,now:ZonedDateTime)=when(rule.scope){
+            NotificationScope.ALWAYS->true
+            NotificationScope.SCHEDULE->PolicyRules.scheduled(AppPolicy(scheduleEnabled=true,days=rule.days,startMinute=rule.startMinute,endMinute=rule.endMinute),now)
+            NotificationScope.FOCUS->groups.any{packageName in it.packages&&FocusWindows.strict(it,now)}
+        }
+    fun digestMinutes(policy:AppPolicy?,default:Int):Int =
+        if(policy!=null&&(policy.notificationRule.digestIntervalOverride||policy.digestMinutes!=30))policy.digestMinutes else default
     fun encode(rule:NotificationRule)=JSONObject().apply {
         put("scope",rule.scope.name);put("days",JSONArray(rule.days.sorted()))
         put("start",rule.startMinute);put("end",rule.endMinute)
         put("keywords",JSONArray(rule.keywords.sorted()));put("until",rule.suppressUntil)
+        put("spamMode",rule.spamMode?.name?:JSONObject.NULL);put("spamAllowed",rule.spamAllowed)
+        put("spamKeywords",JSONArray(rule.spamKeywords.sorted()));put("spamAllowWords",JSONArray(rule.spamAllowWords.sorted()))
+        put("digestIntervalOverride",rule.digestIntervalOverride)
     }
     fun decode(o:JSONObject?):NotificationRule {
         if(o==null)return NotificationRule()
@@ -47,6 +58,13 @@ object NotificationRules {
             List(days.length()){days.getInt(it).also{day->require(day in 1..7)}}.toSet(),
             o.getInt("start").also{require(it in 0..1439)},o.getInt("end").also{require(it in 0..1439)},
             List(keywords.length()){keywords.getString(it).also{word->require(word.isNotBlank()&&word.length<=80)}}.toSet(),
-            o.optLong("until").also{require(it>=0)})
+            o.optLong("until").also{require(it>=0)},
+            if(o.isNull("spamMode"))null else SpamMode.valueOf(o.getString("spamMode")),o.optBoolean("spamAllowed"),
+            words(o.optJSONArray("spamKeywords")),words(o.optJSONArray("spamAllowWords")),o.optBoolean("digestIntervalOverride"))
+    }
+    private fun words(array:JSONArray?):Set<String> {
+        if(array==null)return emptySet()
+        require(array.length()<=20)
+        return List(array.length()){array.getString(it).trim().also{word->require(word.isNotBlank()&&word.length<=80)}}.toSet()
     }
 }

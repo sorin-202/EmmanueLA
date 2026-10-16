@@ -69,14 +69,14 @@ class DigestRepository(context:Context) {
             emit(emptyList())
         }.flowOn(Dispatchers.IO)
     /** Durable capture precedes dismissal. Only Android's listener-cancel callback commits a count. */
-    suspend fun stage(pkg:String,identity:String,reason:String):Boolean {
+    suspend fun stage(pkg:String,identity:String,reason:String,capturedAt:Long=System.currentTimeMillis()):Boolean {
         var captured=false
         store.edit{prefs->
             val id=hash(identity)
             if(id !in strings(prefs[seenKey])){
                 val pending=JSONArray(prefs[pendingKey]?:"[]")
                 if((0 until pending.length()).none{pending.getJSONObject(it).getString("id")==id}){
-                    pending.put(JSONObject().put("id",id).put("package",pkg).put("reason",reason).put("at",System.currentTimeMillis()))
+                    pending.put(JSONObject().put("id",id).put("package",pkg).put("reason",reason).put("at",capturedAt))
                     prefs[pendingKey]=JSONArray((0 until pending.length()).map{pending.getJSONObject(it)}.takeLast(1000)).toString()
                 }
                 captured=true
@@ -117,12 +117,13 @@ class DigestRepository(context:Context) {
         prefs[pendingKey]=JSONArray(List(pending.length()){pending.getJSONObject(it)}.filter{System.currentTimeMillis()-it.getLong("at")<TimeUnit.DAYS.toMillis(1)}).toString()
     }}
     suspend fun clear(){store.edit{it.remove(key);it.remove(seenKey);it.remove(pendingKey)};
-        NotificationManagerCompat.from(contextForActions).cancel(200)}
+        NotificationManagerCompat.from(contextForActions).cancel(200)
+        NotificationDiagnostics.update(NotificationDiagnostics.status.value.connected)}
     suspend fun clearPackage(pkg:String){store.edit{prefs->
         prefs[key]=encode(decode(prefs[key]).filter{it.packageName!=pkg})
         val pending=JSONArray(prefs[pendingKey]?:"[]")
         prefs[pendingKey]=JSONArray(List(pending.length()){pending.getJSONObject(it)}.filter{it.getString("package")!=pkg}).toString()
-    }}
+    };NotificationManagerCompat.from(contextForActions).cancel(200)}
 }
 
 data class NotificationListenerStatus(val connected:Boolean=false,val issue:String?=null,val ruleRevision:Long=0)
@@ -141,6 +142,7 @@ open class EmmanuelaNotificationListener : NotificationListenerService() {
     private var connected=false
     private var boundary:Job?=null
     private val inFlight=mutableSetOf<String>()
+    private val spam=com.emmanuela.launcher.data.NotificationSpamClassifier()
     private var receiverRegistered=false
     private val clockReceiver=object:android.content.BroadcastReceiver(){
         override fun onReceive(context:Context?,intent:Intent?){if(connected){refresh();scheduleBoundary()}}
@@ -185,12 +187,14 @@ open class EmmanuelaNotificationListener : NotificationListenerService() {
         val deadlines=mutableListOf<Long>()
         data.policies.values.forEach{policy->
             val rule=policy.notificationRule
+            val filtering=policy.notifications!=NotificationMode.NORMAL||
+                !rule.spamAllowed&&(rule.spamMode?:data.settings.ui.experience.spamMode)!=com.emmanuela.launcher.data.SpamMode.OFF
             (rule.suppressUntil-now.toInstant().toEpochMilli()).takeIf{it>0}?.let(deadlines::add)
-            if(policy.notifications!=NotificationMode.NORMAL&&rule.scope==com.emmanuela.launcher.data.NotificationScope.SCHEDULE){
+            if(filtering&&rule.scope==com.emmanuela.launcher.data.NotificationScope.SCHEDULE){
                 com.emmanuela.launcher.data.FocusWindows.nextBoundary(com.emmanuela.launcher.data.FocusGroup(schedule=true,days=rule.days,startMinute=rule.startMinute,endMinute=rule.endMinute),now)?.let(deadlines::add)
             }
         }
-        if(data.policies.values.any{it.notifications!=NotificationMode.NORMAL&&it.notificationRule.scope==com.emmanuela.launcher.data.NotificationScope.FOCUS})
+        if(data.policies.values.any{(it.notifications!=NotificationMode.NORMAL||!it.notificationRule.spamAllowed&&(it.notificationRule.spamMode?:data.settings.ui.experience.spamMode)!=com.emmanuela.launcher.data.SpamMode.OFF)&&it.notificationRule.scope==com.emmanuela.launcher.data.NotificationScope.FOCUS})
             data.focusGroups.forEach{com.emmanuela.launcher.data.FocusWindows.nextBoundary(it,now)?.let(deadlines::add)}
         val next=deadlines.filter{it>0}.minOrNull()?:return
         boundary=scope.launch{delay(next.coerceAtLeast(100));refresh();scheduleBoundary()}
@@ -212,11 +216,21 @@ open class EmmanuelaNotificationListener : NotificationListenerService() {
         if(n.flags and (Notification.FLAG_GROUP_SUMMARY or Notification.FLAG_FOREGROUND_SERVICE)!=0||n.category in setOf(Notification.CATEGORY_CALL,Notification.CATEGORY_ALARM,Notification.CATEGORY_TRANSPORT,Notification.CATEGORY_SERVICE,Notification.CATEGORY_NAVIGATION,Notification.CATEGORY_SYSTEM))return
         val data=configuration?:return
         if(!data.settings.ui.v2.notificationFilter)return
-        val policy=data.policies[sbn.packageName]?:return
-        val action=com.emmanuela.launcher.data.NotificationRules.action(policy,sbn.packageName,data.focusGroups,java.time.ZonedDateTime.now(),data.settings.ui.experience.digestEnabled){
+        val policy=data.policies[sbn.packageName]?:com.emmanuela.launcher.data.AppPolicy()
+        val now=java.time.ZonedDateTime.now()
+        val text by lazy {
             // Read only opted-in matching fields, locally. Never log or persist their content.
-            listOf(Notification.EXTRA_TITLE,Notification.EXTRA_TEXT,Notification.EXTRA_BIG_TEXT).joinToString("\n"){n.extras.getCharSequence(it)?.toString().orEmpty()}
+            runCatching{listOf(Notification.EXTRA_TITLE,Notification.EXTRA_TEXT,Notification.EXTRA_BIG_TEXT).joinToString("\n"){n.extras?.getCharSequence(it)?.toString().orEmpty().take(8_192)}.take(16_384)}.getOrDefault("")
         }
+        val delivery=com.emmanuela.launcher.data.NotificationRules.action(policy,sbn.packageName,data.focusGroups,now,data.settings.ui.experience.digestEnabled){text}
+        val rule=policy.notificationRule.copy(spamMode=policy.notificationRule.spamMode?:data.settings.ui.experience.spamMode)
+        val spamActive=!rule.spamAllowed&&rule.spamMode!=com.emmanuela.launcher.data.SpamMode.OFF&&
+            com.emmanuela.launcher.data.NotificationRules.applies(rule,sbn.packageName,data.focusGroups,now)
+        if(delivery==NotificationMode.NORMAL&&!spamActive)return
+        if(com.emmanuela.launcher.data.NotificationSpamClassifier.essentialText(text))return
+        val spamReason=if(delivery==NotificationMode.NORMAL&&spamActive)
+            spam.classify(sbn.packageName,sbn.key+":"+sbn.postTime,text,now.toInstant().toEpochMilli(),rule,sbn.postTime) else null
+        val action=if(spamReason!=null)NotificationMode.DIGEST else delivery
         if(action==NotificationMode.NORMAL)return
         val identity=sbn.key+":"+sbn.postTime
         if(!inFlight.add(identity))return
@@ -224,12 +238,18 @@ open class EmmanuelaNotificationListener : NotificationListenerService() {
             var reevaluate=false
             try {
                 if(action==NotificationMode.DIGEST){
-                    if(!withContext(Dispatchers.IO){digest.stage(sbn.packageName,identity,"Notification digest rule")})return@launch
+                    if(!withContext(Dispatchers.IO){digest.stage(sbn.packageName,identity,spamReason?:"Notification digest rule")})return@launch
                 }
                 val latest=configuration
+                val currentTime=java.time.ZonedDateTime.now()
+                val currentDelivery=latest?.let{com.emmanuela.launcher.data.NotificationRules.action(
+                    it.policies[sbn.packageName]?:com.emmanuela.launcher.data.AppPolicy(),sbn.packageName,it.focusGroups,currentTime,it.settings.ui.experience.digestEnabled){text}}
+                val stillApplies=if(spamReason==null)currentDelivery==action else currentDelivery==NotificationMode.NORMAL&&
+                    com.emmanuela.launcher.data.NotificationRules.applies(rule,sbn.packageName,latest?.focusGroups.orEmpty(),currentTime)
                 if(!connected||latest==null||!latest.settings.ui.v2.notificationFilter||
-                    latest.policies[sbn.packageName]!=policy||latest.focusGroups!=data.focusGroups||
-                    latest.settings.ui.experience.digestEnabled!=data.settings.ui.experience.digestEnabled){
+                    (latest.policies[sbn.packageName]?:com.emmanuela.launcher.data.AppPolicy())!=policy||latest.focusGroups!=data.focusGroups||
+                    latest.settings.ui.experience.spamMode!=data.settings.ui.experience.spamMode||
+                    latest.settings.ui.experience.digestEnabled!=data.settings.ui.experience.digestEnabled||!stillApplies){
                     if(action==NotificationMode.DIGEST)withContext(Dispatchers.IO){digest.removed(identity,false)}
                     reevaluate=connected&&latest?.settings?.ui?.v2?.notificationFilter==true
                     return@launch
@@ -261,7 +281,7 @@ open class DigestWorker(context: Context, parameters: WorkerParameters) : Corout
         val now = System.currentTimeMillis()
         val due = repository.counts.first().filter { row ->
             val policy = policies[row.packageName]
-            row.count > row.announced && now - row.firstAt >= (policy?.digestMinutes ?: data.settings.ui.experience.digestInterval) * 60_000L
+            row.count > row.announced && now - row.firstAt >= com.emmanuela.launcher.data.NotificationRules.digestMinutes(policy,data.settings.ui.experience.digestInterval) * 60_000L
         }
         if (due.isNotEmpty() && NotificationManagerCompat.from(context).areNotificationsEnabled() &&
             (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)) {

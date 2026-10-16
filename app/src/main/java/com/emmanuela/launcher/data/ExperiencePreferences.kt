@@ -68,7 +68,8 @@ data class ExperiencePreferences(
     val gentleReminder: Boolean = false,
     val reminderMinutes: Int = 30,
     val widgetScales: Map<String,Float> = emptyMap(),
-    val widgetAlignments: Map<String,String> = emptyMap()
+    val widgetAlignments: Map<String,String> = emptyMap(),
+    val spamMode:SpamMode=SpamMode.OFF
 )
 object ExperienceCodec {
     fun encode(p:ExperiencePreferences)=JSONObject().apply {
@@ -115,6 +116,7 @@ object ExperienceCodec {
         put("bottomPosition",p.bottomPosition)
         put("digestEnabled",p.digestEnabled)
         put("digestInterval",p.digestInterval)
+        put("spamMode",p.spamMode.name)
         put("hideFromSearch",p.hideFromSearch)
         put("hidePrivateSearch",p.hidePrivateSearch)
         put("autoLock",p.autoLock)
@@ -189,6 +191,7 @@ object ExperienceCodec {
             bottomPosition=choice("bottomPosition",d.bottomPosition,listOf("Bottom")),
             digestEnabled=o.optBoolean("digestEnabled",d.digestEnabled),
             digestInterval=o.optInt("digestInterval",d.digestInterval).also{require(it in 15..120)},
+            spamMode=SpamMode.valueOf(o.optString("spamMode",SpamMode.OFF.name)),
             hideFromSearch=o.optBoolean("hideFromSearch",d.hideFromSearch),
             hidePrivateSearch=o.optBoolean("hidePrivateSearch",d.hidePrivateSearch),
             autoLock=choice("autoLock",d.autoLock,listOf("Immediately","30 seconds","Screen off")),

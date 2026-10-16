@@ -7,6 +7,7 @@ import com.emmanuela.launcher.data.AppSearch
 import com.emmanuela.launcher.data.LaunchableApp
 import com.emmanuela.launcher.data.LauncherData
 import com.emmanuela.launcher.data.NotificationMode
+import com.emmanuela.launcher.data.NotificationRules
 import com.emmanuela.launcher.data.PolicyRules
 import com.emmanuela.launcher.platform.DigestRepository
 import com.emmanuela.launcher.ui.components.AppIcon
@@ -140,7 +141,9 @@ fun AppPolicyEditor(packages: Set<String>, data: LauncherData, apps: List<Launch
     var end by rememberSaveable(identity) { mutableStateOf(PolicyRules.timeLabel(initial.endMinute)) }
     var days by rememberSaveable(identity) { mutableStateOf(ArrayList(initial.days)) }
     var mode by rememberSaveable(identity) { mutableStateOf(initial.notifications.name) }
-    var minutes by rememberSaveable(identity) { mutableIntStateOf(initial.digestMinutes) }
+    var deliveryChanged by rememberSaveable(identity) { mutableStateOf(false) }
+    var minutes by rememberSaveable(identity) { mutableIntStateOf(NotificationRules.digestMinutes(initial,data.settings.ui.experience.digestInterval)) }
+    var minutesChanged by rememberSaveable(identity) { mutableStateOf(false) }
     var applyHide by rememberSaveable(identity) { mutableStateOf(!bulk) }
     var applyBlock by rememberSaveable(identity) { mutableStateOf(!bulk) }
     var applyPrivate by rememberSaveable(identity) { mutableStateOf(!bulk) }
@@ -195,13 +198,13 @@ fun AppPolicyEditor(packages: Set<String>, data: LauncherData, apps: List<Launch
             if (bulk) ToggleRow("Apply notification rule", applyNotifications, !saving) { applyNotifications = it }
             NotificationMode.entries.forEach { option ->
                 Row(Modifier.fillMaxWidth().toggleable(mode == option.name, enabled = applyNotifications && !saving, role = Role.RadioButton,
-                    onValueChange = { mode = option.name }), verticalAlignment = Alignment.CenterVertically) {
+                    onValueChange = { mode = option.name; deliveryChanged=true }), verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(mode == option.name, null)
                     Text(when (option) { NotificationMode.NORMAL -> "Normal notifications"; NotificationMode.DISMISS -> "Dismiss after arrival"; NotificationMode.DIGEST -> "Batch into count summary" })
                 }
             }
             if (mode == NotificationMode.DIGEST.name) Row(Modifier.horizontalScroll(rememberScrollState())) {
-                listOf(15, 30, 60, 120).forEach { n -> TextButton(enabled = applyNotifications && !saving, onClick = { minutes = n }) { Text(if (minutes == n) "✓ ${n}m" else "${n}m") } }
+                listOf(15, 30, 60, 120).forEach { n -> TextButton(enabled = applyNotifications && !saving, onClick = { minutes = n; minutesChanged=true }) { Text(if (minutes == n) "✓ ${n}m" else "${n}m") } }
             }
             Text(localized("Filtering needs Notification Access. Notifications may sound or appear briefly before dismissal. Calls, alarms and ongoing notifications are excluded. Batching keeps counts only; original messages/actions are not retained. Delivery is approximate and may be delayed by Android."), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { ContextSafeOpen(context, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) { failure = "Notification access settings unavailable." } }) { Text(localized("Open notification access")) }
@@ -222,9 +225,11 @@ fun AppPolicyEditor(packages: Set<String>, data: LauncherData, apps: List<Launch
                 endMinute = if (applySchedule) endMinute ?: old.endMinute else old.endMinute,
                 days = if (applySchedule && days.isNotEmpty()) days.toSet() else old.days,
                 notifications = if (applyNotifications) NotificationMode.valueOf(mode) else old.notifications,
-                digestMinutes = if (applyNotifications) minutes else old.digestMinutes)
+                digestMinutes = if (applyNotifications&&minutesChanged) minutes else old.digestMinutes,
+                notificationRule = if(applyNotifications&&minutesChanged)old.notificationRule.copy(digestIntervalOverride=true)else old.notificationRule)
             }
             saving = false
+            if(ok&&applyNotifications&&deliveryChanged&&mode==NotificationMode.DIGEST.name)model.experienceSettings{it.copy(digestEnabled=true)}
             if (ok) dismiss() else failure = "Could not save app rules. Try again."
         }
     }) { Text(if (saving) "Saving…" else "Save") } }, dismissButton = { TextButton(enabled = !saving, onClick = dismiss) { Text(localized("Cancel")) } })
@@ -249,7 +254,7 @@ fun NotificationDigestScreen(apps: List<LaunchableApp>, model: LauncherViewModel
                     row.reasons.forEach{(reason,count)->Text("$reason · $count",style=MaterialTheme.typography.bodySmall)}
                     if(app!=null)TextButton(onClick={model.launch(app)}){Text("Open source app")}
                     TextButton(onClick={scope.launch{
-                        model.changePolicies(setOf(row.packageName)){it.copy(notifications=NotificationMode.NORMAL,notificationRule=it.notificationRule.copy(suppressUntil=0))}
+                        model.changePolicies(setOf(row.packageName)){it.copy(notifications=NotificationMode.NORMAL,notificationRule=it.notificationRule.copy(suppressUntil=0,spamAllowed=true))}
                     }}){Text("Allow future notifications")}
                     TextButton(onClick={scope.launch{repository.clearPackage(row.packageName)}}){Text("Clear this app's counts")}
                 }

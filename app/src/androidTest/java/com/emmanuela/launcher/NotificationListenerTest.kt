@@ -59,6 +59,26 @@ class NotificationListenerTest {
             assertEquals(1,DigestRepository(target).counts.first().first{it.packageName==publisher.packageName}.reasons["Notification digest rule"])
             digest.clearPackage(publisher.packageName)
             assertTrue(digest.counts.first().none{it.packageName==publisher.packageName})
+            val spamRevision=NotificationDiagnostics.status.value.ruleRevision
+            repository.update{it.copy(settings=it.settings.copy(ui=it.settings.ui.copy(experience=it.settings.ui.experience.copy(digestEnabled=false,spamMode=SpamMode.STRONG))),
+                policies=mapOf(publisher.packageName to AppPolicy()))}
+            waitFor("spam default applied"){NotificationDiagnostics.status.value.ruleRevision>spamRevision}
+            post(6110,"sale_discount_today")
+            post(6111,"OTP_sale_discount")
+            post(6112,"sale_discount_navigation",Notification.CATEGORY_NAVIGATION)
+            waitFor("spam filtering preserves authentication and navigation"){!present(6110)&&present(6111)&&present(6112)}
+            val spamRow=withTimeout(5_000){digest.counts.first{rows->rows.any{it.packageName==publisher.packageName}}}.first{it.packageName==publisher.packageName}
+            assertEquals(1,spamRow.reasons["Multiple promotional patterns"])
+            val allowRevision=NotificationDiagnostics.status.value.ruleRevision
+            repository.update{it.copy(policies=mapOf(publisher.packageName to AppPolicy(notificationRule=NotificationRule(spamAllowed=true))))}
+            waitFor("spam app allowlist applied"){NotificationDiagnostics.status.value.ruleRevision>allowRevision}
+            post(6113,"sale_discount_allowlisted")
+            waitFor("allowlisted app remains visible"){present(6113)}
+            val offRevision=NotificationDiagnostics.status.value.ruleRevision
+            repository.update{it.copy(policies=mapOf(publisher.packageName to AppPolicy(notificationRule=NotificationRule(spamMode=SpamMode.OFF))))}
+            waitFor("spam app Off override applied"){NotificationDiagnostics.status.value.ruleRevision>offRevision}
+            post(6114,"sale_discount_overridden")
+            waitFor("per-app Off overrides stronger default"){present(6114)}
             repository.update{it.copy(policies=mapOf(publisher.packageName to AppPolicy(notifications=NotificationMode.DISMISS)))}
             shell("cmd notification disallow_listener $component")
             waitFor("listener disconnected"){!NotificationDiagnostics.status.value.connected}

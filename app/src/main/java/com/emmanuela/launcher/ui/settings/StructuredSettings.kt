@@ -345,6 +345,8 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     ToggleRow("Launcher badges",v.showBadges){yes->model.v2Settings{it.copy(showBadges=yes)}}
                     ToggleRow("Notification filter",v.notificationFilter){yes->model.v2Settings{it.copy(notificationFilter=yes)}}
                     ToggleRow("Notification digest",e.digestEnabled){yes->model.experienceSettings{it.copy(digestEnabled=yes)}}
+                    NotificationSpamDefaults(data,model)
+                    SettingRow("View notification summary"){model.openDigest.value=true}
                     SettingRow("Android notification settings"){open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))}
                     if(advanced&&e.digestEnabled)ChoiceRow("Digest interval",e.digestInterval.toString(),listOf("15","30","60","120")){value->model.experienceSettings{it.copy(digestInterval=value.toInt())}}
                     if(android.os.Build.VERSION.SDK_INT>=33)SettingRow("Allow notification summaries"){notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)}
