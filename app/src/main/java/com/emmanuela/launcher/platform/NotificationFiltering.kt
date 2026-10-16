@@ -8,6 +8,7 @@ import com.emmanuela.launcher.data.NotificationMode
 
 import android.Manifest
 import android.app.Notification
+import android.app.AppOpsManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -107,8 +109,10 @@ class DigestRepository(context:Context) {
     }
     suspend fun acknowledge(snapshot:List<DigestCount>){store.edit{prefs->
         prefs[key]=encode(decode(prefs[key]).map{row->
-            val count=snapshot.find{it.packageName==row.packageName}?.count
-            if(count==null)row else row.copy(announced=maxOf(row.announced,minOf(count,row.count)))
+            val captured=snapshot.find{it.packageName==row.packageName}
+            // A cleared/recreated package group must not inherit an older publication.
+            if(captured==null||captured.retainedAt!=row.retainedAt)row
+            else row.copy(announced=maxOf(row.announced,minOf(captured.count,row.count)))
         })
     }}
     suspend fun prune(){store.edit{prefs->
@@ -132,6 +136,30 @@ object NotificationDiagnostics {
     val status:kotlinx.coroutines.flow.StateFlow<NotificationListenerStatus> = mutable
     internal fun update(connected:Boolean,issue:String?=null){mutable.update{it.copy(connected=connected,issue=issue)}}
     internal fun rulesChanged(){mutable.update{it.copy(ruleRevision=it.ruleRevision+1)}}
+}
+
+internal const val DIGEST_BATCH_TOKEN="emmanuela.digest.batch"
+/** The listener callback is a publication signal; the worker still verifies the active record. */
+internal object DigestPublication {
+    private val observed=MutableStateFlow<String?>(null)
+    fun posted(notification:Notification){notification.extras?.getString(DIGEST_BATCH_TOKEN)?.let{observed.value=it}}
+    suspend fun await(token:String){observed.first{it==token}}
+}
+
+internal data class DigestDeliveryPermission(val notificationsEnabled:Boolean,val runtimeGranted:Boolean,val appOpMode:Int){
+    val allowed:Boolean get()=notificationsEnabled&&runtimeGranted&&appOpMode in setOf(AppOpsManager.MODE_ALLOWED,AppOpsManager.MODE_DEFAULT)
+}
+@Suppress("DEPRECATION")
+internal fun Context.digestDeliveryPermission():DigestDeliveryPermission {
+    val appOps=getSystemService(AppOpsManager::class.java)
+    // Android exposes this operation by its stable string, without a public OPSTR constant.
+    val operation="android:post_notification"
+    val mode=try{
+        if(Build.VERSION.SDK_INT>=29)appOps.unsafeCheckOpRawNoThrow(operation,applicationInfo.uid,packageName)
+        else appOps.checkOpNoThrow(operation,applicationInfo.uid,packageName)
+    }catch(_:SecurityException){AppOpsManager.MODE_ERRORED}
+    return DigestDeliveryPermission(NotificationManagerCompat.from(this).areNotificationsEnabled(),
+        Build.VERSION.SDK_INT<33||ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED,mode)
 }
 
 open class EmmanuelaNotificationListener : NotificationListenerService() {
@@ -209,7 +237,8 @@ open class EmmanuelaNotificationListener : NotificationListenerService() {
         }
     }
     override fun onNotificationPosted(sbn:StatusBarNotification?){
-        if(!connected||sbn==null||sbn.packageName==packageName)return
+        if(!connected||sbn==null)return
+        if(sbn.packageName==packageName){if(sbn.id==200)DigestPublication.posted(sbn.notification);return}
         NotificationBadges.posted(sbn.key,sbn.packageName)
         if(!sbn.isClearable||sbn.isOngoing)return
         val n=sbn.notification
@@ -283,16 +312,25 @@ open class DigestWorker(context: Context, parameters: WorkerParameters) : Corout
             val policy = policies[row.packageName]
             row.count > row.announced && now - row.firstAt >= com.emmanuela.launcher.data.NotificationRules.digestMinutes(policy,data.settings.ui.experience.digestInterval) * 60_000L
         }
-        if (due.isNotEmpty() && NotificationManagerCompat.from(context).areNotificationsEnabled() &&
-            (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)) {
+        if (due.isNotEmpty() && context.digestDeliveryPermission().allowed) {
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel("ema_digest", "Batched notification summary", NotificationManager.IMPORTANCE_LOW))
             val intent = PendingIntent.getActivity(context, 20, Intent(context, MainActivity::class.java).putExtra("open_digest", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val count = due.sumOf { it.count - it.announced }
             if (manager.getNotificationChannel("ema_digest")?.importance == NotificationManager.IMPORTANCE_NONE) return Result.success()
+            // Stable for this exact snapshot, so a confirmed prior retry can be acknowledged too.
+            val identity=due.sortedBy{it.packageName}.joinToString("\n"){"${it.packageName}:${it.count}:${it.announced}:${it.firstAt}:${it.retainedAt}"}
+            val token=MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).joinToString(""){"%02x".format(it)}
+            fun published()=manager.activeNotifications.any{it.id==200&&it.notification.extras?.getString(DIGEST_BATCH_TOKEN)==token}
+            if(published()){repository.acknowledge(due);return Result.success()}
             manager.notify(200, NotificationCompat.Builder(context, "ema_digest").setSmallIcon(com.emmanuela.launcher.R.drawable.ic_notification)
                 .setContentTitle("Your notification summary").setContentText("$count notifications filtered. Tap to review counts.")
+                .addExtras(android.os.Bundle().apply{putString(DIGEST_BATCH_TOKEN,token)})
                 .setContentIntent(intent).setAutoCancel(true).setOnlyAlertOnce(true).build())
+            if(!published()){
+                if(NotificationDiagnostics.status.value.connected)withTimeoutOrNull(5_000){DigestPublication.await(token)}
+                if(!context.digestDeliveryPermission().allowed||!published())return Result.retry()
+            }
             repository.acknowledge(due)
         }
         Result.success()

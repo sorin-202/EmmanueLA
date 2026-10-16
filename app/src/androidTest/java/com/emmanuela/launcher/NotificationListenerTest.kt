@@ -117,4 +117,25 @@ class NotificationListenerTest {
             assertEquals(1,repository.counts.first().single{it.packageName==pkg}.announced)
         }finally{repository.clearPackage(pkg)}
     }
+    @Test fun olderPublicationCannotAnnounceANewGroupCreatedAfterClearing()=runBlocking {
+        val target=InstrumentationRegistry.getInstrumentation().targetContext
+        val repository=DigestRepository(target)
+        val pkg="test.digest.generation"
+        val suffix=System.nanoTime()
+        repository.clearPackage(pkg)
+        try{
+            assertTrue(repository.stage(pkg,"old:$suffix","Old group",System.currentTimeMillis()-1_000))
+            repository.removed("old:$suffix",true)
+            val snapshot=repository.counts.first().single{it.packageName==pkg}
+            repository.clearPackage(pkg)
+            assertTrue(repository.stage(pkg,"new:$suffix","New group"))
+            repository.removed("new:$suffix",true)
+            val replacement=DigestRepository(target).counts.first().single{it.packageName==pkg}
+            assertNotEquals("Clearing starts a different retained group",snapshot.retainedAt,replacement.retainedAt)
+            repository.acknowledge(listOf(snapshot))
+            assertEquals("An old worker must leave the unseen replacement pending",0,repository.counts.first().single{it.packageName==pkg}.announced)
+            repository.acknowledge(listOf(replacement))
+            assertEquals(1,repository.counts.first().single{it.packageName==pkg}.announced)
+        }finally{repository.clearPackage(pkg)}
+    }
 }
