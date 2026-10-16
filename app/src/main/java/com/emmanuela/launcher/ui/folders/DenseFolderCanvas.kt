@@ -43,12 +43,13 @@ fun DenseFolderCanvas(data:LauncherData,modifier:Modifier,open:(String)->Unit,pl
         val total=(unit+gap)*rows
         @Composable fun tile(c:FolderCell,mod:Modifier){
             val f=c.folder;val accent=if(f.color==0L)MaterialTheme.colorScheme.onSurface else Color(f.color)
-            val foreground=if(p.ui.folderFill){if(accent.luminance()>.45f)Color.Black else Color.White}else MaterialTheme.colorScheme.onSurface
-            Column(mod.border(1.dp,accent).background(if(p.ui.folderFill)accent else Color.Transparent).padding(6.dp)){
+            val foreground=folderForeground(f,p.ui.folderFill)
+            FolderSurface(f,p.ui.folderFill,mod){
+            Column(Modifier.padding(6.dp)){
                 VectorSymbol(f.icon,foreground,Modifier.size(p.symbolSize.dp.coerceAtMost(unit)))
                 Text(f.name,color=foreground,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyMedium)
                 Text(if(f.isProtected)"Locked"else "${f.apps.count{data.policies[it.substringBefore('/')]?.hidden!=true}}",color=foreground,style=MaterialTheme.typography.labelSmall)
-            }
+            }}
         }
         Box(Modifier.fillMaxSize().verticalScroll(scroll)){
             Box(Modifier.fillMaxWidth().height(total).pointerInput(columns,cellPixels){

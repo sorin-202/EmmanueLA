@@ -3,6 +3,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.AppFolder
+import com.emmanuela.launcher.data.FolderImageGrants
 import com.emmanuela.launcher.data.AppMetadata
 import com.emmanuela.launcher.data.AppNaming
 import com.emmanuela.launcher.data.AppSearch
@@ -33,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +45,7 @@ import java.util.UUID
 @Composable
 fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: LauncherViewModel,
                  dismiss: () -> Unit, deleted: () -> Unit) {
+    val folderState by model.data.collectAsStateWithLifecycle()
     val id = rememberSaveable(existing?.id) { existing?.id ?: UUID.randomUUID().toString() }
     var name by rememberSaveable(id) { mutableStateOf(existing?.name ?: "") }
     var icon by rememberSaveable(id) { mutableStateOf(existing?.icon ?: "folder") }
@@ -51,6 +54,24 @@ fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: Launche
     var tileWidth by rememberSaveable(id){mutableFloatStateOf(existing?.widthDp?:0f)}
     var widthUnits by rememberSaveable(id){mutableIntStateOf(existing?.widthUnits?:0)}
     var heightUnits by rememberSaveable(id){mutableIntStateOf(existing?.heightUnits?:0)}
+    var gridColumns by rememberSaveable(id){mutableIntStateOf(existing?.gridColumns?:4)}
+    var gridRows by rememberSaveable(id){mutableIntStateOf(existing?.gridRows?:4)}
+    var imageUri by rememberSaveable(id){mutableStateOf(existing?.imageUri?:"")}
+    var imageLoading by remember{mutableStateOf(false)}
+    var solidBackground by rememberSaveable(id){mutableStateOf(existing?.solidBackground?:false)}
+    var acquiredImageGrants by rememberSaveable(id){mutableStateOf(arrayListOf<String>())}
+    val context = LocalContext.current
+    DisposableEffect(id) {
+        onDispose {
+            if ((context as? android.app.Activity)?.isChangingConfigurations != true) {
+                FolderImageGrants.cleanup(context, acquiredImageGrants)
+            }
+        }
+    }
+    fun changeImage(value: String) {
+        if (imageUri != value && imageUri in acquiredImageGrants) FolderImageGrants.cleanup(context, listOf(imageUri))
+        imageUri = value
+    }
     var biometricUnlock by rememberSaveable(id){mutableStateOf(existing?.biometricUnlock?:true)}
     var tileHeight by rememberSaveable(id){mutableFloatStateOf(existing?.heightDp?:150f)}
     var color by rememberSaveable(id) { mutableLongStateOf(existing?.color ?: 0L) }
@@ -77,22 +98,18 @@ fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: Launche
                         }
                     }
                 }
-                SectionLabel("Color")
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    folderColors.forEachIndexed { index, value ->
-                        val swatch = if (value == 0L) MaterialTheme.colorScheme.onSurface else Color(value)
-                        Box(Modifier.size(48.dp).selectionMarker(color==value).semantics { contentDescription = if (index == 0) "Monochrome" else "Folder color $index"; selected = color == value }
-                            .clickable(enabled = !saving) { color = value }, contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(if (color == value) 22.dp else 15.dp).background(swatch, androidx.compose.foundation.shape.CircleShape))
-                            if (color == value) Text(localized("✓"), color = Color.Black, fontSize = 12.sp)
-                        }
-                    }
-                }
-                ChoiceRow("Width cells (0 = global)",widthUnits.toString(),(0..4).map{it.toString()}){widthUnits=it.toInt()}
-                ChoiceRow("Height cells (0 = global)",heightUnits.toString(),(0..4).map{it.toString()}){heightUnits=it.toInt()}
+                FolderAppearanceEditor(AppFolder(id, name, icon, emptyList(), color = color, imageUri = imageUri, solidBackground = solidBackground), !saving, folderState.settings.ui.folderFill,
+                    { color = it; solidBackground = it != 0L }, { solidBackground = it }, ::changeImage, { imageLoading = it },
+                    { acquiredImageGrants = ArrayList((acquiredImageGrants + it).distinct()) })
+                ChoiceRow("Canvas width cells (0 = global)",widthUnits.toString(),(0..8).map{it.toString()}){widthUnits=it.toInt()}
+                ChoiceRow("Canvas height cells (0 = global)",heightUnits.toString(),(0..8).map{it.toString()}){heightUnits=it.toInt()}
                 ToggleRow("Allow device authentication",biometricUnlock){biometricUnlock=it}
                 ChoiceRow("In-folder layout",layout,listOf("Inherit","Text","Icons","Grid")){layout=it}
                 ToggleRow("Keep custom app order",manualOrder){manualOrder=it}
+                SectionLabel("App grid dimensions")
+                ChoiceRow("Columns",gridColumns.toString(),(1..8).map{it.toString()}){gridColumns=it.toInt();layout="Grid"}
+                ChoiceRow("Rows",gridRows.toString(),(1..8).map{it.toString()}){gridRows=it.toInt();layout="Grid"}
+                Text("Columns adapt to keep touch targets usable on this screen. Extra apps scroll; manual ordering is preserved.",style=MaterialTheme.typography.bodySmall)
                 SectionLabel("This folder's size")
                 Text(if(tileWidth==0f)"Width: use the available column" else "Width: ${tileWidth.toInt()} dp",style=MaterialTheme.typography.bodySmall)
                 Slider(if(tileWidth==0f)160f else tileWidth,{tileWidth=it},valueRange=100f..360f,enabled=!saving)
@@ -129,9 +146,9 @@ fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: Launche
                 failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (existing != null) TextButton(onClick = { deleteConfirm = true }, enabled = !saving) { Text(localized("Delete folder")) }
             }
-        }, confirmButton = { TextButton(enabled = name.isNotBlank() && !saving && (!lockFolder || password.length >= 4 || (password.isEmpty()&&(biometricUnlock||existing?.passwordHash?.isNotEmpty()==true))), onClick = {
+        }, confirmButton = { TextButton(enabled = name.isNotBlank() && !saving && !imageLoading && (!lockFolder || password.length >= 4 || (password.isEmpty()&&(biometricUnlock||existing?.passwordHash?.isNotEmpty()==true))), onClick = {
             saving = true
-            scope.launch { val ok = model.saveFolder(AppFolder(id, name.trim(), icon, selectedApps.distinct(), color, existing?.passwordSalt ?: "", existing?.passwordHash ?: "", existing?.gridCell,layout,tileWidth,tileHeight,manualOrder,widthUnits,heightUnits,biometricUnlock,lockFolder&&password.isEmpty()&&existing?.passwordHash.isNullOrEmpty()), if(lockFolder)password else "", removePassword||!lockFolder); saving = false
+            scope.launch { val ok = model.saveFolder(AppFolder(id, name.trim(), icon, selectedApps.distinct(), color, existing?.passwordSalt ?: "", existing?.passwordHash ?: "", existing?.gridCell,layout,tileWidth,tileHeight,manualOrder,widthUnits,heightUnits,biometricUnlock,lockFolder&&password.isEmpty()&&existing?.passwordHash.isNullOrEmpty(), imageUri, gridColumns, gridRows, solidBackground), if(lockFolder)password else "", removePassword||!lockFolder); saving = false
                 if (ok) dismiss() else failure = "Save failed. Try again." }
         }) { Text(if (saving) "Saving…" else "Save") } },
         dismissButton = { TextButton(onClick = dismiss, enabled = !saving) { Text(localized("Cancel")) } })

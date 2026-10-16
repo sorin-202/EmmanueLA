@@ -92,6 +92,10 @@ fun FolderScreen(folder: AppFolder, apps: List<LaunchableApp>, launch: (Launchab
     val state by model.data.collectAsStateWithLifecycle()
     val sort=state.settings.ui.experience.folderSort
     val entries=remember(folder,apps,sort){if(folder.manualOrder||sort=="Manual")folder.apps.mapNotNull{id->apps.find{it.id==id}}else apps.filter{it.id in folder.apps}}
+    val foreground=folderForeground(folder,state.settings.ui.folderFill)
+    FolderSurface(folder,state.settings.ui.folderFill,Modifier.fillMaxSize()){
+    MaterialTheme(colorScheme=MaterialTheme.colorScheme.copy(primary=foreground,onSurface=foreground)){
+    CompositionLocalProvider(LocalContentColor provides foreground){
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(horizontal=24.dp)){
         Header(folder.name,back){TextButton(onClick=edit){Text(localized("Edit"))}}
         TextButton(onClick={arranging=!arranging}){Text(localized(if(arranging)"Done" else "Arrange apps"))}
@@ -99,5 +103,5 @@ fun FolderScreen(folder: AppFolder, apps: List<LaunchableApp>, launch: (Launchab
         if(entries.isEmpty())Text(localized("No available apps. Tap Edit to choose apps."),Modifier.padding(vertical=24.dp))
         val iconMode=when(folder.layout){"Text"->false;"Icons"->true;else->showIcons}
         MagneticFolderApps(folder,entries,arranging,iconMode,model,launch,editApp,Modifier.weight(1f).fillMaxWidth())
-    }
+    }}}}
 }

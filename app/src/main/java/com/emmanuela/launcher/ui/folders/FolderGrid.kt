@@ -54,16 +54,17 @@ fun EditableFolderGrid(data:LauncherData,modifier:Modifier,open:(String)->Unit,p
     val columns=when(p.ui.folderLayout){"List"->GridCells.Fixed(1);"Freeform","Canvas"->GridCells.Fixed(2);else->GridCells.Adaptive(p.tileSize.dp)}
     @Composable fun tile(folder:AppFolder,mod:Modifier){
         val accent=if(folder.color==0L)MaterialTheme.colorScheme.onSurface else Color(folder.color)
-        val foreground=if(p.ui.folderFill){if(accent.luminance()>.45f)Color.Black else Color.White}else MaterialTheme.colorScheme.onSurface
-        Column(mod.border(1.dp,accent).background(if(p.ui.folderFill)accent else Color.Transparent).padding(16.dp)){
-            if(p.symbolPlacement=="Top")VectorSymbol(folder.icon,if(p.ui.folderFill)foreground else accent,Modifier.padding(bottom=12.dp).size(p.symbolSize.dp))
+        val foreground=folderForeground(folder,p.ui.folderFill)
+        FolderSurface(folder,p.ui.folderFill,mod){
+        Column(Modifier.padding(16.dp)){
+            if(p.symbolPlacement=="Top")VectorSymbol(folder.icon,if(p.ui.folderFill||folder.solidBackground||folder.imageUri.isNotEmpty())foreground else accent,Modifier.padding(bottom=12.dp).size(p.symbolSize.dp))
             Row(verticalAlignment=Alignment.CenterVertically){
-                if(p.symbolPlacement=="Left")VectorSymbol(folder.icon,if(p.ui.folderFill)foreground else accent,Modifier.padding(end=8.dp).size(p.symbolSize.dp))
+                if(p.symbolPlacement=="Left")VectorSymbol(folder.icon,if(p.ui.folderFill||folder.solidBackground||folder.imageUri.isNotEmpty())foreground else accent,Modifier.padding(end=8.dp).size(p.symbolSize.dp))
                 Text(folder.name,color=foreground,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleMedium.let{it.copy(fontSize=it.fontSize*p.ui.experience.folderLabelScale)})
             }
             val amount=folder.apps.count{data.policies[it.substringBefore('/')]?.hidden!=true}
             Text(if(folder.isProtected)"Locked folder" else "$amount apps",color=foreground.copy(alpha=.75f),style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=8.dp))
-        }
+        }}
     }
     Box(modifier.onGloballyPositioned{viewport=it.boundsInRoot()}.pointerInput(freeform,snap){
         detectDragGesturesAfterLongPress(onDragStart={local->

@@ -12,14 +12,14 @@ import org.json.JSONObject
 
 private val Context.folderDataStore by preferencesDataStore(name = "folders_v1")
 
-data class AppFolder(val id: String, val name: String, val icon: String, val apps: List<String>, val color: Long = 0L, val passwordSalt: String = "", val passwordHash: String = "", val gridCell: Int? = null, val layout:String="Inherit", val widthDp:Float=0f,val heightDp:Float=150f,val manualOrder:Boolean=false,val widthUnits:Int=0,val heightUnits:Int=0,val biometricUnlock:Boolean=true,val deviceProtected:Boolean=false){val isProtected:Boolean get()=passwordHash.isNotEmpty()||deviceProtected}
+data class AppFolder(val id: String, val name: String, val icon: String, val apps: List<String>, val color: Long = 0L, val passwordSalt: String = "", val passwordHash: String = "", val gridCell: Int? = null, val layout:String="Inherit", val widthDp:Float=0f,val heightDp:Float=150f,val manualOrder:Boolean=false,val widthUnits:Int=0,val heightUnits:Int=0,val biometricUnlock:Boolean=true,val deviceProtected:Boolean=false,val imageUri:String="",val gridColumns:Int=4,val gridRows:Int=4,val solidBackground:Boolean=false){val isProtected:Boolean get()=passwordHash.isNotEmpty()||deviceProtected}
 
 object FolderCodec {
     fun encode(folders: List<AppFolder>): String = JSONObject().apply {
         put("version", 1)
         put("folders", JSONArray().apply {
             folders.forEach { folder -> put(JSONObject().apply {
-                put("deviceProtected",folder.deviceProtected);put("widthUnits",folder.widthUnits);put("heightUnits",folder.heightUnits);put("biometricUnlock",folder.biometricUnlock);put("manualOrder",folder.manualOrder);put("widthDp",folder.widthDp.toDouble());put("heightDp",folder.heightDp.toDouble());put("layout",folder.layout);put("id", folder.id); put("name", folder.name); put("icon", folder.icon)
+                put("solidBackground",folder.solidBackground);put("imageUri",folder.imageUri);put("gridColumns",folder.gridColumns);put("gridRows",folder.gridRows);put("deviceProtected",folder.deviceProtected);put("widthUnits",folder.widthUnits);put("heightUnits",folder.heightUnits);put("biometricUnlock",folder.biometricUnlock);put("manualOrder",folder.manualOrder);put("widthDp",folder.widthDp.toDouble());put("heightDp",folder.heightDp.toDouble());put("layout",folder.layout);put("id", folder.id); put("name", folder.name); put("icon", folder.icon)
                 put("color", folder.color); put("passwordSalt", folder.passwordSalt); put("passwordHash", folder.passwordHash); put("gridCell", folder.gridCell ?: JSONObject.NULL)
                 put("apps", JSONArray(folder.apps.distinct()))
             }) }
@@ -39,7 +39,7 @@ object FolderCodec {
                 obj.optString("passwordSalt").also { require(it.isEmpty() || it.length == 24) },
                 obj.optString("passwordHash").also { require(it.isEmpty() || it.length == 44) },
                 if (obj.isNull("gridCell")) null else obj.getInt("gridCell").also { require(it in 0..2000) },obj.optString("layout","Inherit").also{require(it in listOf("Inherit","Text","Icons","Grid"))},
-                obj.optDouble("widthDp",0.0).toFloat().also{require(it==0f || it in 100f..360f)},obj.optDouble("heightDp",150.0).toFloat().also{require(it in 100f..360f)},obj.optBoolean("manualOrder"),obj.optInt("widthUnits",0).also{require(it in 0..4)},obj.optInt("heightUnits",0).also{require(it in 0..4)},obj.optBoolean("biometricUnlock",true),obj.optBoolean("deviceProtected",false))
+                obj.optDouble("widthDp",0.0).toFloat().also{require(it==0f || it in 100f..360f)},obj.optDouble("heightDp",150.0).toFloat().also{require(it in 100f..360f)},obj.optBoolean("manualOrder"),obj.optInt("widthUnits",0).also{require(it in 0..8)},obj.optInt("heightUnits",0).also{require(it in 0..8)},obj.optBoolean("biometricUnlock",true),obj.optBoolean("deviceProtected",false),obj.optString("imageUri", "").also{require(FolderAppearance.validImageUri(it))},obj.optInt("gridColumns",4).also{require(it in 1..8)},obj.optInt("gridRows",4).also{require(it in 1..8)},obj.optBoolean("solidBackground",false))
                 .also { require(it.passwordSalt.isEmpty() == it.passwordHash.isEmpty()) }
         }.also { folders -> require(folders.map { it.id }.distinct().size == folders.size) }
     }
