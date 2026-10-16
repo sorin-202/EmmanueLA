@@ -58,7 +58,10 @@ fun CursorSearchField(query:String,change:(String)->Unit,p:Preferences,modifier:
             }.onFocusChanged{focused=it.isFocused}.drawWithContent{
                 drawContent()
                 val result=layout
-                if(focused&&visible&&value.selection.collapsed&&result!=null){val rect=result.getCursorRect(value.selection.start.coerceIn(0,value.text.length));val w=when(e.cursorStyle){"Thin"->1.dp.toPx();"Thick"->4.dp.toPx();"Block"->8.dp.toPx();else->u.searchCursorWidth.dp.toPx()}
+                val current=value
+                // Input/selection state can advance before BasicTextField publishes its next
+                // measured layout. Never query or paint a caret against the previous text.
+                if(focused&&visible&&current.selection.collapsed&&result!=null&&result.layoutInput.text.text==current.text){val rect=result.getCursorRect(current.selection.start.coerceIn(0,result.layoutInput.text.length));val w=when(e.cursorStyle){"Thin"->1.dp.toPx();"Thick"->4.dp.toPx();"Block"->8.dp.toPx();else->u.searchCursorWidth.dp.toPx()}
                     when(e.cursorStyle){"Underline"->drawRect(cursor,Offset(rect.left,rect.bottom-2.dp.toPx()),Size(8.dp.toPx(),2.dp.toPx()))
                         "Custom"->drawContext.canvas.nativeCanvas.apply{drawText(e.cursorCharacter,rect.left,rect.bottom,cursorPaint.apply{color=cursor.toArgb();textSize=rect.height})}
                         else->drawRect(cursor.copy(alpha=if(e.cursorStyle=="Block").55f else 1f),Offset(rect.left,rect.top),Size(w,rect.height))}

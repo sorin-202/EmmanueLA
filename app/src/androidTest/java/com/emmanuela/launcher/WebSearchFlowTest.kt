@@ -5,12 +5,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.emmanuela.launcher.data.AppFolder
 import com.emmanuela.launcher.data.Preferences
+import com.emmanuela.launcher.data.UiPreferences
+import com.emmanuela.launcher.data.ExperiencePreferences
 import com.emmanuela.launcher.data.WebSearchHistory
 import com.emmanuela.launcher.data.WebSearchHistoryRepository
 import com.emmanuela.launcher.data.WebSearchEngine
@@ -52,6 +58,46 @@ class WebSearchFlowTest {
         }
         compose.onNode(hasSetTextAction()).performClick().performKeyInput { pressKey(Key.Enter) }
         compose.runOnIdle { assertEquals(1, submissions) }
+    }
+
+    @Test fun focusedCustomCaretSurvivesReplacementSelectionClearAndSearch() {
+        val submitted = mutableListOf<String>()
+        val preferences = Preferences(ui = UiPreferences(searchCursorBlinkMs = 0,
+            searchCursorColor = 0xFFFF00FFL,
+            experience = ExperiencePreferences(cursorStyle = "Custom", cursorCharacter = "|")))
+        compose.setContent {
+            var input by remember { mutableStateOf("") }
+            MaterialTheme {
+                CursorSearchField(input, { input = it }, preferences, onSearch = {
+                    WebSearchHistory.fromInput(input)?.let(submitted::add)
+                })
+            }
+        }
+        val queries = listOf("/celestial navigation", "/x", "/a much longer replacement query", "/🌙 café 🛰️", "/final query")
+        val field = compose.onNode(hasSetTextAction())
+        // No delay between edits: every replacement/clear can invalidate the layout used
+        // by the draw-only caret while input and selection already contain the new text.
+        queries.forEach { query ->
+            field.performClick().performTextReplacement(query)
+            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(query)))
+            val selection = TextRange(1, query.length)
+            field.performTextInputSelection(selection)
+            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, selection))
+            field.performTextInputSelection(TextRange(query.length))
+            field.performImeAction()
+            compose.onNodeWithText("Clear").performClick()
+            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        }
+        compose.runOnIdle { assertEquals(queries.mapNotNull(WebSearchHistory::fromInput), submitted) }
+        field.performClick().performTextReplacement("/ready")
+        val pixels = field.captureToImage().toPixelMap()
+        val hasCustomCaret = (0 until pixels.height).any { y -> (0 until pixels.width).any { x ->
+            val color = pixels[x, y]
+            color.red > .8f && color.blue > .8f && color.green < .6f
+        } }
+        assertTrue("The configured custom caret must resume drawing after the new text is laid out", hasCustomCaret)
+        field.performImeAction()
+        compose.runOnIdle { assertEquals("ready", submitted.last()) }
     }
 
     @Test fun historyTapExecutesAndClearRemovesRows() {
