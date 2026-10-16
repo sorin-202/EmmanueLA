@@ -59,7 +59,7 @@ object SettingsRoutes {
         page.startsWith("folder-select:") -> "folder-assignments"
         page.startsWith("blocked-detail:") -> "blocked-apps"
         page.startsWith("app-detail:") -> page.substringAfter('|',"apps-hub")
-        page.startsWith("widget-style:") -> "widgets"
+        page.startsWith("widget-style:") -> "widget:${page.substringAfter(':')}"
         page.startsWith("widget:") -> "widgets"
         page.startsWith("group:") -> "live-moment"
         page in listOf("widgets","bottom-controls","home-alphabet","widget-style","home-text-style") -> "home-settings"
@@ -188,7 +188,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                 page=="widgets" -> {
                     listOf("clock" to p.showClock,"date" to p.showDate,"weather" to v.weatherEnabled,"usage" to p.showScreenTime,"battery" to p.showBattery,"location" to v.locationWidgetEnabled).forEach{(id,enabled)->
                         Row(verticalAlignment=Alignment.CenterVertically){VectorSymbol(if(id=="usage")"timer" else id,MaterialTheme.colorScheme.onSurface)
-                            Text(localized(widgetName(id)),Modifier.weight(1f).clickable{navigate("widget-style:$id")}.padding(16.dp));Switch(enabled,{yes->if(id!="location"||!yes)setWidget(model,id,yes);if(yes&&id=="usage"&&!usageAllowed)permission("usage");if(yes&&id=="location")location.launch(Manifest.permission.ACCESS_COARSE_LOCATION)})}
+                            Text(localized(widgetName(id)),Modifier.weight(1f).clickable{navigate("widget:$id")}.padding(16.dp));Switch(enabled,{yes->if(id!="location"||!yes)setWidget(model,id,yes);if(yes&&id=="usage"&&!usageAllowed)permission("usage");if(yes&&id=="location")location.launch(Manifest.permission.ACCESS_COARSE_LOCATION)})}
                     }
                 }
                 page.startsWith("widget:") -> {
@@ -196,7 +196,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     ToggleRow("Enabled",enabled){yes->if(id!="location"||!yes)setWidget(model,id,yes);if(yes&&id=="location")location.launch(Manifest.permission.ACCESS_COARSE_LOCATION);if(yes&&id=="usage"&&!usageAllowed)permission("usage")}
                     if(id=="clock"){ChoiceRow("Clock format",v.clockFormat,listOf("Digital","Compact","Hands")){value->model.v2Settings{it.copy(clockFormat=value)}};ToggleRow("Show seconds",v.clockSeconds){yes->model.v2Settings{it.copy(clockSeconds=yes)}};ToggleRow("AM/PM",v.clockAmPm){yes->model.v2Settings{it.copy(clockAmPm=yes)}}}
                     if(id=="weather")WeatherLocationPicker(data,model)
-                    SettingRow("Appearance","Default"){navigate("widget-style:$id")}
+                    SettingRow("Style",if(id in v.widgetStyles)"Custom"else"Default"){navigate("widget-style:$id")}
                     SettingRow("Tap action"){gesture(when(id){"usage"->"Screen time";else->widgetName(id)})}
                     if(id=="usage")SettingRow("Digital Wellbeing destination"){navigate("wellbeing-target")}
                     if(id=="weather")WeatherWebsiteRow(data,model)
