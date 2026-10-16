@@ -26,6 +26,10 @@ fun NotificationConnectionStatus(){
     val granted=remember(lifecycle,status){context.notificationAccess()}
     Text(when{!granted->"Notification Access is off";status.connected->"Notification listener connected";else->"Access granted; waiting for Android to connect the listener"},style=MaterialTheme.typography.bodySmall)
     status.issue?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
+    if(granted&&!status.connected)TextButton(onClick={
+        try{android.service.notification.NotificationListenerService.requestRebind(android.content.ComponentName(context,com.emmanuela.launcher.EmmanuelaNotificationListener::class.java))}
+        catch(_:SecurityException){NotificationDiagnostics.update(false,"Notification Access was revoked. Enable it in Android settings.")}
+    }){Text("Reconnect notification listener")}
 }
 
 @Composable
@@ -40,8 +44,14 @@ fun NotificationRuleEditor(app:LaunchableApp,data:LauncherData,model:LauncherVie
     val keywords=words.lines().map{it.trim()}.filter{it.isNotEmpty()}.toSet()
     val valid=keywords.size<=20&&keywords.all{it.length<=80}&&draft.days.isNotEmpty()
     NotificationConnectionStatus()
+    TextButton(onClick={model.openDigest.value=true}){Text("View notification summary")}
     ChoiceRow("Delivery",mode.name,NotificationMode.entries.map{it.name}){mode=NotificationMode.valueOf(it)}
     Text("NORMAL leaves notifications unchanged. DISMISS removes matching notifications. DIGEST saves a count for a later summary, without message content.",style=MaterialTheme.typography.bodySmall)
+    if(mode==NotificationMode.DIGEST){
+        ToggleRow("Enable notification summaries",data.settings.ui.experience.digestEnabled){enabled->model.experienceSettings{it.copy(digestEnabled=enabled)}}
+        ChoiceRow("Summary interval (minutes)",policy.digestMinutes.toString(),listOf("15","30","60","120")){value->scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(digestMinutes=value.toInt())}}}
+        Text("Android delivers background summaries approximately; battery restrictions can delay them. Counts remain available in Notification summary.",style=MaterialTheme.typography.bodySmall)
+    }
     if(mode!=NotificationMode.NORMAL){
         val labels=mapOf(NotificationScope.ALWAYS to "Always",NotificationScope.SCHEDULE to "Schedule",NotificationScope.FOCUS to "During Strict Block")
         ChoiceRow("Apply rule",labels.getValue(draft.scope),labels.values.toList()){label->draft=draft.copy(scope=labels.entries.first{it.value==label}.key)}

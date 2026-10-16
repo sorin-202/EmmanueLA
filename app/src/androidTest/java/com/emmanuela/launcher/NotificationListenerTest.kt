@@ -47,6 +47,19 @@ class NotificationListenerTest {
             repository.update{it.copy(policies=mapOf(publisher.packageName to AppPolicy(notifications=NotificationMode.DISMISS)))}
             waitFor("rule change removes existing notification"){!present(6102)}
             assertTrue(present(6103))
+            val digest=DigestRepository(target)
+            digest.clearPackage(publisher.packageName)
+            val revision=NotificationDiagnostics.status.value.ruleRevision
+            repository.update{it.copy(settings=it.settings.copy(ui=it.settings.ui.copy(experience=it.settings.ui.experience.copy(digestEnabled=true))),
+                policies=mapOf(publisher.packageName to AppPolicy(notifications=NotificationMode.DIGEST)))}
+            waitFor("digest rule applied"){NotificationDiagnostics.status.value.ruleRevision>revision}
+            post(6105,"digest_capture")
+            waitFor("digest dismisses original"){!present(6105)}
+            assertEquals(1,withTimeout(5_000){digest.counts.first{rows->rows.any{it.packageName==publisher.packageName}}}.first{it.packageName==publisher.packageName}.count)
+            assertEquals(1,DigestRepository(target).counts.first().first{it.packageName==publisher.packageName}.reasons["Notification digest rule"])
+            digest.clearPackage(publisher.packageName)
+            assertTrue(digest.counts.first().none{it.packageName==publisher.packageName})
+            repository.update{it.copy(policies=mapOf(publisher.packageName to AppPolicy(notifications=NotificationMode.DISMISS)))}
             shell("cmd notification disallow_listener $component")
             waitFor("listener disconnected"){!NotificationDiagnostics.status.value.connected}
             post(6104,"after_access_revoked")
@@ -56,8 +69,32 @@ class NotificationListenerTest {
             waitFor("reconnected listener filters existing notification"){!present(6104)}
             assertFalse(ConfigurationCodec.encode(repository.data.first()).contains("personal_message"))
         }finally{
+            DigestRepository(target).clearPackage(publisher.packageName)
             publishCommand("--es operation clear");repository.restore(original)
             if(!wasGranted)shell("cmd notification disallow_listener $component")
         }
+    }
+    @Test fun digestOnlyCountsConfirmedDismissalsAndSurvivesRepositoryRecreation()=runBlocking {
+        val target=InstrumentationRegistry.getInstrumentation().targetContext
+        val repository=DigestRepository(target)
+        val pkg="test.digest.repository"
+        repository.clearPackage(pkg)
+        val captureA="capture-A:${System.nanoTime()}"
+        val captureB="capture-B:${System.nanoTime()}"
+        try{
+            assertTrue(repository.stage(pkg,captureA,"Test reason"))
+            assertTrue(repository.counts.first().none{it.packageName==pkg})
+            repository.removed(captureA,false)
+            assertTrue(repository.counts.first().none{it.packageName==pkg})
+            assertTrue(repository.stage(pkg,captureB,"Test reason"))
+            repository.removed(captureB,true)
+            repository.removed(captureB,true)
+            val saved=DigestRepository(target).counts.first().single{it.packageName==pkg}
+            assertEquals(1,saved.count)
+            assertEquals(mapOf("Test reason" to 1),saved.reasons)
+            assertFalse(repository.stage(pkg,captureB,"Test reason"))
+            repository.acknowledge(listOf(saved))
+            assertEquals(1,repository.counts.first().single{it.packageName==pkg}.announced)
+        }finally{repository.clearPackage(pkg)}
     }
 }

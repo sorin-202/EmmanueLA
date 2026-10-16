@@ -88,7 +88,7 @@ fun AppManagementScreen(data: LauncherData, apps: List<LaunchableApp>, model: La
     LaunchedEffect(unlocked, apps, data.policies) { selected = ArrayList(selected.filter { pkg -> apps.any { it.packageName == pkg } && (unlocked || data.policies[pkg]?.hidden != true) }) }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(horizontal = 20.dp)) {
         SettingsHeading("App settings",back,data,model)
-        if(data.settings.ui.experience.advanced)Text(localized("Rules apply to every launch through EmmanueLA. Other launchers, notifications and already-open apps are outside EmmanueLA's blocking control."), style = MaterialTheme.typography.bodySmall)
+        if(data.settings.ui.experience.advanced)Text(localized("App rules also apply to apps already open or opened elsewhere when Enforce outside launcher and Android Accessibility access are enabled. Android system and permission controls remain accessible."), style = MaterialTheme.typography.bodySmall)
         if(data.settings.ui.experience.advanced)Row {
             TextButton(onClick = {
                 ContextSafeOpen(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) { model.error.value = "Usage settings unavailable." }
@@ -238,12 +238,21 @@ fun NotificationDigestScreen(apps: List<LaunchableApp>, model: LauncherViewModel
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Header("Notification summary", back)
-        Text(localized("Counts only, retained for up to seven days when new notifications arrive. Original notifications were dismissed. Open an app to read its messages."), style = MaterialTheme.typography.bodySmall)
+        Text(localized("Counts and filtering reasons stay on this device for seven days. Message text is never stored. Android cannot restore dismissed notifications; open the source app to read messages."), style = MaterialTheme.typography.bodySmall)
         if (counts.isEmpty()) Text(localized("No batched notifications."), Modifier.padding(vertical = 24.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(counts, key = { it.packageName }) { row ->
                 val app = apps.find { it.packageName == row.packageName }
-                if (app != null) SettingRow(app.label, "${row.count}") { model.launch(app) }
+                Column(Modifier.fillMaxWidth().padding(vertical=8.dp)) {
+                    if(app!=null)SettingRow(app.label,"${row.count}"){model.launch(app)}
+                    else Text("${row.packageName} · ${row.count}")
+                    row.reasons.forEach{(reason,count)->Text("$reason · $count",style=MaterialTheme.typography.bodySmall)}
+                    if(app!=null)TextButton(onClick={model.launch(app)}){Text("Open source app")}
+                    TextButton(onClick={scope.launch{
+                        model.changePolicies(setOf(row.packageName)){it.copy(notifications=NotificationMode.NORMAL,notificationRule=it.notificationRule.copy(suppressUntil=0))}
+                    }}){Text("Allow future notifications")}
+                    TextButton(onClick={scope.launch{repository.clearPackage(row.packageName)}}){Text("Clear this app's counts")}
+                }
             }
         }
         TextButton(onClick = { scope.launch { repository.clear() } }) { Text(localized("Clear counts")) }
