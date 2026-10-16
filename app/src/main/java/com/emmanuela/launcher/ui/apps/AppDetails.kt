@@ -64,7 +64,11 @@ fun AppDetailsContent(app:LaunchableApp,data:LauncherData,model:LauncherViewMode
     if(data.settings.ui.experience.advanced){var timer by remember(policy.dailyLimitMinutes){mutableStateOf(policy.dailyLimitMinutes?.toString()?:"")}
         OutlinedTextField(timer,{timer=it.filter(Char::isDigit).take(4)},label={Text(localized("Daily minutes (empty = unlimited)"))},singleLine=true)
         TextButton(enabled=timer.isEmpty()||(timer.toIntOrNull()?:0) in 1..1440,onClick={scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(dailyLimitMinutes=timer.toIntOrNull())}}}){Text(localized("Save timer"))}
-        ChoiceRow("Notifications",policy.notifications.name,NotificationMode.entries.map{it.name}){value->scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(notifications=NotificationMode.valueOf(value))}}}
+        ChoiceRow("Notifications",policy.notifications.name,NotificationMode.entries.map{it.name}){value->
+            val selectedMode=NotificationMode.valueOf(value)
+            if(selectedMode==NotificationMode.DIGEST)model.experienceSettings{it.copy(digestEnabled=true)}
+            scope.launch{model.changePolicies(setOf(app.packageName)){it.copy(notifications=selectedMode)}}
+        }
         TextButton(onClick={auth("Reset app rules"){scope.launch{model.changePolicies(setOf(app.packageName)){AppPolicy()}}}}){Text(localized("Reset app rules"))}}
     SettingRow("System app info"){ContextSafeOpen(context,Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${app.packageName}"))){model.error.value="App information unavailable."}}
     }
