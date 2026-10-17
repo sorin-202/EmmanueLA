@@ -14,6 +14,8 @@ Counts and reasons have a seven-day maximum group lifetime. Expired groups are o
 
 Timed summaries require the digest setting, Notification Access to capture originals, and permission to post EmmanueLA notifications. Android's summary channel must also be enabled. Failed delivery leaves counts unannounced for a later attempt. WorkManager's minimum periodic interval is 15 minutes; Android battery restrictions can delay delivery. The default interval remains effective for untouched app rules; a per-app interval can explicitly override it, including 30 minutes. Legacy non-default app intervals remain effective.
 
+Summary acknowledgment requires an active Android notification carrying the token for the exact due snapshot; a successful `notify()` call alone is insufficient. Runtime permission, app notification settings, and the raw notification AppOp are checked. The listener's own-summary callback wakes the worker after asynchronous posting without polling. Unconfirmed publication retains the counts and requests a WorkManager retry; the same snapshot token lets that retry confirm an already posted summary. Acknowledgment also checks the retained group's generation, so an older worker cannot announce a replacement group created after the user clears counts.
+
 ## Spam modes
 
 Spam detection uses a bounded local rule engine, with no LLM, cloud request, or additional production dependency. A global default offers Off, Conservative, and Stronger. Each app can inherit it or select a different mode, and an app allowlist always bypasses the classifier. Delivery rules and temporary suppression remain separately applicable.

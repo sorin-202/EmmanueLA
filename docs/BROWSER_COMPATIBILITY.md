@@ -31,6 +31,14 @@ These are implemented adapters, not a matrix of physically verified browser vers
 
 `BrowserDiagnosticsTest` requires an installed supported browser with first-run onboarding completed. It opens an example HTTP(S) navigation, requires an address to become readable, then requires the actual website-rule overlay to appear in Android's accessibility tree. It no longer passes merely because Firefox reports an unreadable address. Absence of a browser is a skipped prerequisite, not a successful browser test. No browser APK is bundled or redistributed.
 
+### Verified automated browser run
+
+[CI run 39049201457](https://github.com/sorin-202/EmmanueLA/actions/runs/39049201457), commit `392cd5331a02d22bbd873926f8541f8e574ca50e`, ran the dedicated browser test on an Android 15/API 35 x86_64 KVM emulator with the official Firefox **157.0.1** APK. Its downloaded APK matched the workflow's pinned SHA-256. The archived JUnit XML reports **1 test passed, 0 failures, 0 errors, 0 skipped** for `supportedBrowserNavigationActuallyDisplaysBlockingOverlay`.
+
+The archived preflight identifies Firefox's `ADDRESSBAR_URL_BOX` control, whose empty `text` and `contentDescription` of ` example.com/focus-fixture. Search or enter address` exercise the display-description adapter in a normal tab. The test then independently requires the real Accessibility service to connect, read the navigated browser address, report `OVERLAY_SHOWN`, expose the exact rule reason in Android's accessibility tree, return to EmmanueLA, and retain the readable-browser diagnostic without an issue. A successful onboarding/preflight alone would not satisfy those assertions. The preflight recorded **0 Quickstep ANR recovery attempts** (`not_needed`) for this run.
+
+Evidence is archived as the run's `firefox-browser-test-reports` artifact (ID `12107595024`): `firefox-preflight/result.json`, its captured Android hierarchy, and the `BrowserDiagnosticsTest` JUnit XML/logcat. This establishes this Firefox/version/emulator path. Private tabs, other browser packages and versions, hidden toolbars, redirects, and physical-device behavior still require their own runtime tests. The general regression job intentionally lacks Firefox and skips this prerequisite-dependent case; the dedicated browser job supplies the executed case above.
+
 Live the Moment shows Android permission state separately from current service connection. Browser diagnostics distinguish unsupported package, foreign window, missing control, address editing, unreadable value and tree query failure. The last browser check remains visible when returning Home. An overlay is reported only after WindowManager accepts it. A successful Home API call is reported as **requested**, not as proof that Android navigated. A failed overlay/Home action is visible as a failure. No URLs or page contents are persisted or transmitted by this service.
 
 ## Physical-device acceptance still required

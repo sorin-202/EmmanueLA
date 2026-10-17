@@ -9,20 +9,21 @@ A minimalist Android launcher for intentional phone use. Local settings, deliber
 ## What it does
 
 - Independent Home, App List and folders, with an optional Home alphabet and configurable gestures.
-- Ranked app/alias search, tags (`#`), permission-based contacts (`@`), explicit web searches (`/query`), protected folder results and opt-in searchable actions. Actions require a tap and use the same authorization checks as ordinary launches.
-- Password/device-protected folders, manual ordering and built-in clock/date/battery/usage/weather/location widgets. Placement is saved on completed gestures; cancelled movement is discarded.
+- Ranked app/alias search, tags (`#`), permission-based contacts (`@`), keyboard-submitted web searches (`/query`), five local recent web searches, compact protected folder results and opt-in searchable actions. Configured actions require a tap and retain ordinary launch authorization checks.
+- Direct held dragging of Home widgets and installed-app icons, independent widget presets and safe JSON style import with preview. Placement is saved on completed drops; cancelled movement is discarded.
+- Password/device-protected folders, manual ordering, per-folder RGB/image backgrounds and screen-adaptive custom folder grids, alongside the existing clock/date/battery/usage/weather/location widgets.
 - **Live the Moment:** grouped limits, schedules, continuous Strict Block, controlled Breaks, warnings/grace and optional intention prompts. These are self-management tools, not tamper-proof parental controls.
-- Optional notification dismissal/digest with schedules, keywords, Strict Block scope and temporary suppression. Calls, alarms, ongoing and media notifications are preserved. Android channel settings control quiet delivery; a listener cannot undo an alert already played.
+- Optional notification dismissal/digest with schedules, keywords, Strict Block scope and temporary suppression, plus local spam filtering with per-app overrides, allowlists and reviewable reasons. Critical categories, ongoing services and recognized security messages have preservation guards. Android channel settings control quiet delivery; a listener cannot undo an alert already played.
 
 ## Honest platform limits
 
 Launcher entry checks and optional accessibility enforcement have different boundaries. Apps can still be opened through other Android surfaces when accessibility enforcement is disabled or restricted. Private Space protects launcher entry points; it does not encrypt or isolate other apps.
 
-Website blocking is **best-effort visible-address matching**, not a VPN. **Firefox157's tested normal-mode address source is UNSUPPORTED**; the app displays an unreadable-address diagnostic instead of falsely claiming a block. Other browser adapters are not runtime-verified. See the [browser/mode evidence](docs/BROWSER_COMPATIBILITY.md). Selective native Shorts/Reels/feed filtering is unsupported.
+Website blocking is **best-effort visible-address matching**, not a VPN. The implementation now handles Firefox's Compose address control as well as traditional browser address fields. Adapter implementation and actual browser/version verification are separate; see the [browser/mode evidence](docs/BROWSER_COMPATIBILITY.md) and [current acceptance evidence](docs/DEVICE_REPAIR_VALIDATION.md). Unsupported or unreadable states produce diagnostics. Selective native Shorts/Reels/feed filtering is unsupported.
 
 ## Privacy
 
-No accounts, ads or analytics. Configuration and focus rules stay on the device. Optional contact search and notification keyword matching run locally; message bodies, intentions and browser history are not persisted. Optional weather sends selected coordinates/location queries to Open-Meteo. Android backup is disabled; explicit exports omit nonportable grants and temporary access state. See [permissions and privacy](docs/PRIVACY.md).
+No accounts, ads or analytics. Configuration and focus rules stay on the device. Contact search and notification/spam matching run locally; message bodies, intentions and Accessibility-observed browser history are not persisted. The last five explicitly executed web searches are saved locally and can be cleared. Optional weather sends selected coordinates/location queries to Open-Meteo. Android backup is disabled; explicit exports omit nonportable grants and temporary access state. See [permissions and privacy](docs/PRIVACY.md).
 
 ## Install and build
 
@@ -33,18 +34,17 @@ The beta signing identity must remain stable for updates. An existing installati
 Open this repository directory in Android Studio, using JDK17 and Android SDK35. The wrapper uses Gradle8.11.1, AGP8.9.2 and Kotlin2.1.20.
 
 ```sh
-./gradlew clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-./gradlew :app:assembleRelease :app:bundleRelease
-./gradlew :app:connectedDebugAndroidTest
+./gradlew clean :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease :app:bundleRelease --stacktrace --max-workers=2
+./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2
 ```
 
 On Windows use `gradlew.bat`. Outputs are under `app/build/outputs/`. Select EmmanueLA in Android's default Home settings after installing. Sensitive permissions are optional and requested for the corresponding feature.
 
 ## Validation and roadmap
 
-**BETA READY for controlled testing.** Final clean validation of code checkpoint `056f629` passed **123 JVM tests and all 18 API35 emulator tests**, lint (0 errors, 43 warnings), debug/release APK and release AAB builds. A locally development-signed copy of the minified release passed runtime smoke checks. No production release was published.
+Physical-device observations supersede earlier completion reports. The current repair's per-item status, exact commands, test outcomes, CI results and remaining physical checks are recorded in [device repair validation](docs/DEVICE_REPAIR_VALIDATION.md). The [implementation inventory](docs/DEVICE_REPAIR_IMPLEMENTATION.md) explains the root causes and changed paths; [widget import schema](docs/WIDGET_STYLE_SCHEMA.md), [folder appearance and size](docs/folder-appearance-and-size.md), [notification filtering](docs/NOTIFICATION_FILTERING.md) and [search behavior](docs/SEARCH.md) document operation and limits.
 
-See the [final engineering report](docs/FINAL_REPORT.md), [current validation](docs/VALIDATION.md), [engineering evidence](docs/ENGINEERING_VALIDATION.md), [performance and size measurements](docs/PERFORMANCE.md), and [search behavior](docs/SEARCH.md). The universal release APK is 2,789,120 bytes, down 8.2% from the measured M6 baseline. Emulator search measurements improved; physical frame-rate and battery performance are not certified.
+Earlier engineering reports and measurements remain historical records. Compilation, JVM checks and emulator results do not certify physical enforcement, OEM lifecycle behavior, gesture feel, battery performance or document-provider access.
 
 ### Release screenshots
 
@@ -54,6 +54,6 @@ Actual API35 emulator captures of the minified release:
 |---|---|---|
 | ![Home](docs/images/home.png) | ![App List](docs/images/app-list.png) | ![Settings](docs/images/settings.png) |
 
-Contributions should preserve the existing design and data. Start with [CONTRIBUTING](CONTRIBUTING.md), use the issue templates for reproducible problems, and read [SECURITY](SECURITY.md). Remaining acceptance requires physical devices/OEMs, biometrics, haptics, battery and high-refresh displays. Remote CI and production signing/publication remain unexecuted. Earlier delivery notes are preserved in [history](docs/history/README-delivered.md).
+Contributions should preserve the existing design and data. Start with [CONTRIBUTING](CONTRIBUTING.md), use the issue templates for reproducible problems, and read [SECURITY](SECURITY.md). Remaining acceptance requires physical devices/OEMs, biometrics, haptics, battery and high-refresh displays. Earlier delivery notes are preserved in [history](docs/history/README-delivered.md).
 
 Licensed under [MIT](LICENSE). The logo above reproduces the application's existing vector icon.
