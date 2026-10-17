@@ -169,9 +169,29 @@ class LauncherFlowTest {
     @Test fun configuredSearchActionRequiresTapAndCanBeRemoved()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
+        // As in the widget/editor flows, observe before interaction: DataStore 1.1.7
+        // can miss a write when a new cold collector starts concurrently (431787506).
+        val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        var observer:kotlinx.coroutines.Job?=null
+        suspend fun awaitActions(stage:String,expected:Set<String>){
+            val result=kotlinx.coroutines.withTimeoutOrNull(15_000){
+                observed.filterNotNull().first{it.settings.ui.experience.searchActions==expected}
+            }
+            val visible=if(result==null)runCatching {
+                val root=instrumentation.uiAutomation.rootInActiveWindow
+                "owner=${root?.packageName}; labels="+nodes(root).filter{it.isVisibleToUser}.mapNotNull{
+                    it.text?.toString()?.takeIf{label->label.isNotBlank()}
+                        ?:it.contentDescription?.toString()?.takeIf{label->label.isNotBlank()}
+                }.joinToString(" | ")
+            }.getOrElse{"Native labels unavailable: ${it.javaClass.simpleName}: ${it.message}"} else ""
+            assertNotNull("Search action wait [$stage] timed out; expected=$expected; observed=${observed.value?.settings?.ui?.experience?.searchActions}; $visible",result)
+            assertEquals("Search actions after $stage",expected,result!!.settings.ui.experience.searchActions)
+        }
         try {
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=true,searchActions=setOf("settings"))))))
-            ActivityScenario.launch(MainActivity::class.java).use {
+            observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            awaitActions("initial Settings fixture",setOf("settings"))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 click("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Settings")}))
@@ -182,12 +202,16 @@ class LauncherFlowTest {
                 click("Search actions",scroll=true)
                 find("Choose up to 16 actions to find by name in App List search. Actions always require a tap.")
                 click("Settings")
-                kotlinx.coroutines.withTimeout(15_000){repository.data.first{it.settings.ui.experience.searchActions.isEmpty()}}
+                awaitActions("remove Settings",emptySet())
+                assertEquals("Removed action survives repository recreation",emptySet<String>(),ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.experience.searchActions)
                 click("Add search action")
                 click("Clock",scroll=true)
-                kotlinx.coroutines.withTimeout(15_000){repository.data.first{"clock" in it.settings.ui.experience.searchActions}}
+                awaitActions("add Clock",setOf("clock"))
+                assertEquals("Clock survives repository recreation",setOf("clock"),ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.experience.searchActions)
+                scenario.recreate()
+                assertEquals("Clock survives activity and repository recreation",setOf("clock"),ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.experience.searchActions)
             }
-        }finally{repository.restore(original)}
+        }finally{observer?.cancel();observer?.join();repository.restore(original)}
     }
     @Test fun homeAndDrawerSwipesRespectDirectionAndCancellation()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
