@@ -1,6 +1,7 @@
 package com.emmanuela.launcher
 
 import android.content.Intent
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -30,6 +31,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CopyOnWriteArrayList
 
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalTestApi::class)
@@ -62,13 +64,19 @@ class WebSearchFlowTest {
 
     @Test fun focusedCustomCaretSurvivesReplacementSelectionClearAndSearch() {
         val submitted = mutableListOf<String>()
+        val events = CopyOnWriteArrayList<String>()
+        fun record(event: String) { events.add("${SystemClock.uptimeMillis()}: $event") }
         val preferences = Preferences(ui = UiPreferences(searchCursorBlinkMs = 0,
             searchCursorColor = 0xFFFF00FFL,
             experience = ExperiencePreferences(cursorStyle = "Custom", cursorCharacter = "|")))
         compose.setContent {
             var input by remember { mutableStateOf("") }
             MaterialTheme {
-                CursorSearchField(input, { input = it }, preferences, onSearch = {
+                CursorSearchField(input, {
+                    record("change '$input' -> '$it'")
+                    input = it
+                }, preferences, onSearch = {
+                    record("submit '$input'")
                     WebSearchHistory.fromInput(input)?.let(submitted::add)
                 })
             }
@@ -78,6 +86,7 @@ class WebSearchFlowTest {
         // No delay between edits: every replacement/clear can invalidate the layout used
         // by the draw-only caret while input and selection already contain the new text.
         queries.forEach { query ->
+            record("replace '$query'")
             field.performClick().performTextReplacement(query)
             field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(query)))
             val selection = TextRange(1, query.length)
@@ -85,11 +94,17 @@ class WebSearchFlowTest {
             field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, selection))
             field.performTextInputSelection(TextRange(query.length))
             field.performImeAction()
-            compose.onNodeWithText("Clear").performClick()
-            // Clear also ends the prior IME composition: a clamped (0, 0)
-            // composition leaves an underline annotation on otherwise empty text.
-            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
-            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange.Zero))
+            record("tap Clear for '$query'")
+            try {
+                compose.onNodeWithText("Clear").performClick()
+                // Keep the exact assertion: the trace distinguishes a missed touch
+                // from a subsequent input callback restoring the previous query.
+                field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+                field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange.Zero))
+                record("Clear verified for '$query'")
+            } catch (failure: AssertionError) {
+                throw AssertionError("Clear failed for '$query'. Input callback trace:\n${events.joinToString("\n")}", failure)
+            }
         }
         compose.runOnIdle { assertEquals(queries.mapNotNull(WebSearchHistory::fromInput), submitted) }
         field.performClick().performTextReplacement("/ready")

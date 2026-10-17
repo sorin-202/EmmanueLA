@@ -23,7 +23,7 @@ FIELD_IDS = {
 }
 # Decline optional account, promotion and notification prompts before advancing.
 LABELS = (
-    "No Thanks", "No thanks", "Not now", "Skip", "Agree and start browsing",
+    "Dismiss", "No Thanks", "No thanks", "Not now", "Skip", "Agree and start browsing",
     "Continue browsing", "Done", "Continue",
 )
 PAGE_CLASSES = {"android.webkit.WebView", "org.mozilla.geckoview.GeckoView", "org.mozilla.gecko.GeckoView"}
