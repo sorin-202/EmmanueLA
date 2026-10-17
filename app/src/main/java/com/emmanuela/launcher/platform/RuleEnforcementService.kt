@@ -201,13 +201,21 @@ class RuleEnforcementService:AccessibilityService(){
             do {
                 browserReadPending=false
                 val expected=generation
-                val result=withContext(Dispatchers.IO){
+                val (owner,result)=withContext(Dispatchers.IO){
                     try {
                         val root=activeApplicationRoot()
-                        try { BrowserAdapters.read(root,pkg) } finally { @Suppress("DEPRECATION") root?.recycle() }
-                    }catch(_:Exception){BrowserAdapters.Result(unavailable=BrowserAdapters.Unavailable.TREE_ACCESS_FAILED)}
+                        try { root?.packageName?.toString() to BrowserAdapters.read(root,pkg) } finally { @Suppress("DEPRECATION") root?.recycle() }
+                    }catch(_:Exception){null to BrowserAdapters.Result(unavailable=BrowserAdapters.Unavailable.TREE_ACCESS_FAILED)}
                 }
                 if(expected!=generation||foreground!=pkg||!state.settings.ui.v2.backgroundRules)return@launch
+                // Window callbacks and address reads reconcile independently. A new
+                // application's root is not a failed read of the previous browser.
+                if(owner!=null&&owner!=pkg){refreshForeground();return@launch}
+                // Our verified blocking overlay can obscure the toolbar, including
+                // during a foreground transition. Preserve its last browser result
+                // until a real browser read or foreground reconciliation completes.
+                if(result.unavailable!=null&&result.unavailable!=BrowserAdapters.Unavailable.EDITING_ADDRESS&&
+                    overlay!=null&&currentUrl.isNotEmpty())continue
                 EnforcementBridge.browser(pkg,result)
                 if(result.unavailable!=null&&result.unavailable!=BrowserAdapters.Unavailable.EDITING_ADDRESS&&!warnedAddress){
                     warnedAddress=true
@@ -215,9 +223,6 @@ class RuleEnforcementService:AccessibilityService(){
                 }
                 // Editing is not a new navigation. Keep an already-enforced page covered.
                 if(result.unavailable==BrowserAdapters.Unavailable.EDITING_ADDRESS)continue
-                // An overlay may obscure the underlying toolbar. Losing that tree is
-                // not evidence that the already-matched page navigated elsewhere.
-                if(result.unavailable!=null&&overlay!=null&&currentUrl.isNotEmpty())continue
                 if(result.address.orEmpty()!=currentUrl){currentUrl=result.address.orEmpty();evaluate()}
             }while(browserReadPending)
         }
