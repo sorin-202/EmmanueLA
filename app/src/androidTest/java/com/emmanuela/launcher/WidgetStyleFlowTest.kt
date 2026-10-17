@@ -3,7 +3,6 @@ package com.emmanuela.launcher
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.SystemClock
 import android.graphics.Rect
 import android.view.InputDevice
@@ -27,11 +26,14 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Exercises the options route, Android document-result callback, preview and real DataStore. */
 @RunWith(AndroidJUnit4::class)
 class WidgetStyleFlowTest {
     private val instrumentation=InstrumentationRegistry.getInstrumentation()
+    private val clicks=mutableListOf<String>()
+    private var safeViewport:Rect?=null
     private fun nodes(node:AccessibilityNodeInfo?):List<AccessibilityNodeInfo> =
         if(node==null)emptyList()else listOf(node)+(0 until node.childCount).flatMap{nodes(node.getChild(it))}
     private fun find(text:String,scroll:Boolean=false):AccessibilityNodeInfo {
@@ -55,6 +57,7 @@ class WidgetStyleFlowTest {
         var previous:Rect?=null
         var settled=0
         var target:Rect?=null
+        var requestedOnScreen=false
         while(SystemClock.uptimeMillis()<deadline){
             val tree=nodes(instrumentation.uiAutomation.rootInActiveWindow)
             val node=tree.firstOrNull{candidate->
@@ -67,7 +70,19 @@ class WidgetStyleFlowTest {
                 matches&&candidate.isVisibleToUser&&candidate.packageName?.toString()==instrumentation.targetContext.packageName&&control?.isEnabled==true
             }
             if(node!=null){
-                val bounds=Rect().also{node.getBoundsInScreen(it)}
+                var control:AccessibilityNodeInfo=node
+                while(!control.isClickable){control=control.parent?:break}
+                if(scroll&&!requestedOnScreen){
+                    val shown=control.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+                    clicks.add("$text show-on-screen=$shown")
+                    requestedOnScreen=true
+                    // Bringing a partially visible row into view can replace its
+                    // semantics node. Resolve the current full button again.
+                    previous=null;settled=0
+                    SystemClock.sleep(50)
+                    continue
+                }
+                val bounds=Rect().also{control.getBoundsInScreen(it)}
                 settled=if(bounds==previous&&!bounds.isEmpty)settled+1 else 0
                 previous=bounds
                 if(settled==3){target=bounds;break}
@@ -81,6 +96,8 @@ class WidgetStyleFlowTest {
             SystemClock.sleep(50)
         }
         val bounds=requireNotNull(target){"Clickable control must settle: $text. Visible text: "+nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}.mapNotNull{it.text?.toString()}.joinToString(" | ")}
+        clicks.add("$text button=$bounds safeViewport=$safeViewport")
+        safeViewport?.let{assertTrue("$text touch center must be inside the unobscured viewport: ${clicks.joinToString("; ")}",it.contains(bounds.centerX(),bounds.centerY()))}
         // A real touch avoids retaining a semantics ID across navigation/recomposition.
         val down=SystemClock.uptimeMillis()
         for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){
@@ -90,6 +107,16 @@ class WidgetStyleFlowTest {
             try{assertTrue("Inject touch for $text",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
         }
         instrumentation.waitForIdleSync()
+    }
+    private fun captureViewport(scenario:ActivityScenario<MainActivity>){
+        scenario.onActivity{activity->
+            val decor=activity.window.decorView
+            val insets=androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+            assertNotNull("Platform window insets are available",insets)
+            val bars=insets!!.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            val origin=IntArray(2);decor.getLocationOnScreen(origin)
+            safeViewport=Rect(origin[0]+bars.left,origin[1]+bars.top,origin[0]+decor.width-bars.right,origin[1]+decor.height-bars.bottom)
+        }
     }
     @Test fun customHomeTextScaleHasMatchingPreviewAndHomeHeight()=runBlocking<Unit>{
         val repository=ConfigurationRepository(instrumentation.targetContext)
@@ -125,21 +152,38 @@ class WidgetStyleFlowTest {
         val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",file)
         var monitor:Instrumentation.ActivityMonitor?=null
         var observer:Job?=null
+        val requests=CopyOnWriteArrayList<Intent>()
         val observed=MutableStateFlow<LauncherData?>(null)
         try{
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false),v2=V2Preferences(widgetStyles=mapOf("date" to sibling))))))
             observer=launch(Dispatchers.IO){repository.data.collect{observed.value=it}}
             withTimeout(5000){observed.filterNotNull().first()}
-            val filter=IntentFilter(Intent.ACTION_OPEN_DOCUMENT).apply{addCategory(Intent.CATEGORY_OPENABLE);addDataType("*/*")}
-            monitor=instrumentation.addMonitor(filter,Instrumentation.ActivityResult(Activity.RESULT_OK,Intent().setData(uri)),true)
+            monitor=object:Instrumentation.ActivityMonitor(){
+                override fun onStartActivity(intent:Intent):Instrumentation.ActivityResult?{
+                    if(intent.action!=Intent.ACTION_OPEN_DOCUMENT)return null
+                    requests.add(Intent(intent))
+                    return Instrumentation.ActivityResult(Activity.RESULT_OK,Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                }
+            }.also(instrumentation::addMonitor)
             ActivityScenario.launch(MainActivity::class.java).use{scenario->
                 click("Launcher settings");click("Home");click("Manage widgets",scroll=true);click("Clock");click("Style")
                 find("Preview")
-                click("Import JSON style",scroll=true);find("Import Clock style")
+                captureViewport(scenario)
+                fun importPreview(){
+                    val before=requests.size
+                    click("Import JSON style",scroll=true)
+                    try{find("Import Clock style")}catch(failure:AssertionError){
+                        throw AssertionError("Import preview did not appear. Picker requests before=$before after=${requests.size}; monitor hits=${monitor?.hits}; requests=${requests.map{it.toUri(0)}}; touches=${clicks.joinToString("; ")}",failure)
+                    }
+                    assertEquals("Each import tap invokes Android's document contract once",before+1,requests.size)
+                    assertEquals("*/*",requests.last().type)
+                    assertTrue("JSON is an accepted document type",requests.last().getStringArrayExtra(Intent.EXTRA_MIME_TYPES)?.contains("application/json")==true)
+                }
+                importPreview()
                 assertFalse("Preview does not write",repository.data.first().settings.ui.v2.widgetStyles.containsKey("clock"))
                 click("Cancel")
                 assertFalse("Cancel does not write",repository.data.first().settings.ui.v2.widgetStyles.containsKey("clock"))
-                click("Import JSON style",scroll=true);find("Import Clock style");click("Apply style")
+                importPreview();click("Apply style")
                 val saved=withTimeout(5000){observed.filterNotNull().first{it.settings.ui.v2.widgetStyles.containsKey("clock")}}.settings
                 assertEquals("Serif",saved.styleForWidget("clock").font)
                 assertEquals("Center",saved.styleForWidget("clock").alignment)

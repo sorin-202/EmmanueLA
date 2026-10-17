@@ -8,7 +8,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -37,6 +36,17 @@ import java.util.concurrent.CopyOnWriteArrayList
 @OptIn(ExperimentalTestApi::class)
 class WebSearchFlowTest {
     @get:Rule val compose = createComposeRule()
+
+    private fun SemanticsNodeInteraction.assertExactSearchText(expected: String): SemanticsNodeInteraction {
+        val config = fetchSemanticsNode().config
+        val input = config[SemanticsProperties.InputText]
+        val editable = config[SemanticsProperties.EditableText]
+        // CoreTextField exposes composition underline spans in EditableText. Those
+        // IME-owned annotations may change while the exact input characters do not.
+        assertEquals("Raw search text (spans=${input.spanStyles})", expected, input.text)
+        assertEquals("Displayed search text (spans=${editable.spanStyles})", expected, editable.text)
+        return this
+    }
 
     @Test fun keyboardSearchSubmitsImmediatelyWithoutAResultTap() {
         var submitted: String? = null
@@ -88,7 +98,8 @@ class WebSearchFlowTest {
         queries.forEach { query ->
             record("replace '$query'")
             field.performClick().performTextReplacement(query)
-            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(query)))
+            field.assertExactSearchText(query)
+            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange(query.length)))
             val selection = TextRange(1, query.length)
             field.performTextInputSelection(selection)
             field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, selection))
@@ -97,9 +108,9 @@ class WebSearchFlowTest {
             record("tap Clear for '$query'")
             try {
                 compose.onNodeWithText("Clear").performClick()
-                // Keep the exact assertion: the trace distinguishes a missed touch
+                // Keep exact characters: the trace distinguishes a missed touch
                 // from a subsequent input callback restoring the previous query.
-                field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+                field.assertExactSearchText("")
                 field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange.Zero))
                 record("Clear verified for '$query'")
             } catch (failure: AssertionError) {
@@ -108,6 +119,8 @@ class WebSearchFlowTest {
         }
         compose.runOnIdle { assertEquals(queries.mapNotNull(WebSearchHistory::fromInput), submitted) }
         field.performClick().performTextReplacement("/ready")
+        field.assertExactSearchText("/ready")
+        field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange(6)))
         val pixels = field.captureToImage().toPixelMap()
         val hasCustomCaret = (0 until pixels.height).any { y -> (0 until pixels.width).any { x ->
             val color = pixels[x, y]
