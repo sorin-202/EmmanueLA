@@ -1,6 +1,6 @@
 # Physical-device repair implementation inventory
 
-This inventory describes source changes from baseline `b3de953` through checkpoint `15ea8b2`, including the quick AppDetails Digest integration, caret and digest-publication repairs, widget typography, the native Home navigation correction, official-browser test setup, and the browser diagnostic transition repair. It also includes the current reporting additions. It was written after inspecting the implementation, baseline diffs, and test definitions. The physical-device observations in the request remain the acceptance requirements.
+This inventory describes source changes from baseline `b3de953` through checkpoint `02c3d60`, including the quick AppDetails Digest integration, caret and digest-publication repairs, widget typography, the native Home navigation correction, official-browser test setup, browser diagnostic transition repair, and continuous search-action persistence observation in instrumentation. It also includes the current reporting additions. It was written after inspecting the implementation, baseline diffs, and test definitions. The physical-device observations in the request remain the acceptance requirements.
 
 This document records implementation evidence, not completion certification. Test names below identify assertions present in the repository; they do not assert that those tests ran successfully. Build, JVM, Android instrumentation, CI, and physical-device results belong in the separate `DEVICE_REPAIR_VALIDATION.md` report.
 
@@ -47,6 +47,8 @@ Source review also identified that synchronizing an external query change throug
 Android-default mode prefers a concrete `ACTION_WEB_SEARCH` handler and otherwise sends a DuckDuckGo HTTPS search to the default browser. Explicit engines use that browser. Android does not expose a browser's internal engine preference; the app does not claim to discover it. See [SEARCH.md](SEARCH.md).
 
 **Test definitions.** `WebSearchHistoryTest` covers slash parsing, five-item order/deduplication, corrupt/invalid storage, and known engine choices. Android `WebSearchFlowTest` covers IME and hardware submission, history actions, DataStore recreation/reset, URL encoding, and engine choice without execution. Its caret regression exercises immediate long/short/Unicode replacement, noncollapsed selection, clear, Search, and visible custom-caret recovery. `WebSearchExecutionTest` exercises real AllApps input → Enter → persisted history → ViewModel → intercepted Android `startActivity`; it requires a configured HTTPS browser. Existing `LauncherFlowTest` assertions now inspect the history list and persisted clearing.
+
+**Search-action persistence observation.** The documentation-head `3ca9e84` regression run timed out in the existing `configuredSearchActionRequiresTapAndCanBeRemoved` test. Its old error did not identify which saved-state wait failed, and there was no application crash or ANR. That test started new cold DataStore collectors concurrently with writes, a susceptibility already addressed by continuous observers in neighboring persistence tests. Checkpoint `02c3d60` starts one observer before interaction, retains each original 15-second deadline, and requires the exact removed/added action sets. It adds stage, observed-state and native-window diagnostics on failure, plus independent repository and activity-recreation assertions. This corrects the test's observation path and strengthens persistence checks; the preceding timeout alone does not prove the collector race was its sole cause. Runtime results are recorded separately in the validation report.
 
 ## 5. Compact folder search results
 
@@ -143,7 +145,7 @@ The Android gesture/navigation fixtures now sample current rendered controls and
 
 ## Baseline-relative changed-file inventory
 
-The 86 paths below include implementation, tests, test support, CI workflow/browser setup, documentation, and the current working-tree integration relative to `b3de953`. The inventory is regenerated from Git's baseline-relative changed paths plus the two new reporting documents. It is a source snapshot; later validation/report-only commits should be identified separately in the final validation report.
+The 86 paths below include implementation, tests, test support, CI workflow/browser setup and documentation relative to `b3de953`. The inventory is regenerated from Git's baseline-relative changed paths. It is a source snapshot; later validation/report-only commits are identified separately in the validation report.
 
 ```text
 .github/scripts/prepare-firefox-fixture.py
