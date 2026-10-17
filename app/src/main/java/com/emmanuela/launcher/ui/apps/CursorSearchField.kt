@@ -40,7 +40,9 @@ fun CursorSearchField(query:String,change:(String)->Unit,p:Preferences,modifier:
     val u=p.ui;val e=u.experience
     val hint=placeholder.ifEmpty{if(e.contactsSearch)"Search apps, #tag or @contact" else "Search apps or #tag"}
     var value by remember{mutableStateOf(TextFieldValue(query))}
-    if(value.text!=query)value=value.copy(text=query,selection=androidx.compose.ui.text.TextRange(query.length))
+    // A clear or external replacement ends the IME's composition of the previous
+    // query. Keeping it would clamp that stale composition onto the new text.
+    if(value.text!=query)value=value.copy(text=query,selection=androidx.compose.ui.text.TextRange(query.length),composition=null)
     var layout by remember{mutableStateOf<TextLayoutResult?>(null)}
     var focused by remember{mutableStateOf(false)}
     var visible by remember{mutableStateOf(true)}

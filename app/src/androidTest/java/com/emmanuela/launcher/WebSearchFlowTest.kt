@@ -86,7 +86,10 @@ class WebSearchFlowTest {
             field.performTextInputSelection(TextRange(query.length))
             field.performImeAction()
             compose.onNodeWithText("Clear").performClick()
+            // Clear also ends the prior IME composition: a clamped (0, 0)
+            // composition leaves an underline annotation on otherwise empty text.
             field.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+            field.assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange.Zero))
         }
         compose.runOnIdle { assertEquals(queries.mapNotNull(WebSearchHistory::fromInput), submitted) }
         field.performClick().performTextReplacement("/ready")
