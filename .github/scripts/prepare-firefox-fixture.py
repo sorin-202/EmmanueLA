@@ -29,6 +29,34 @@ LABELS = (
 PAGE_CLASSES = {"android.webkit.WebView", "org.mozilla.geckoview.GeckoView", "org.mozilla.gecko.GeckoView"}
 
 
+def bounds(node):
+    values = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
+    if not values:
+        return None
+    x1, y1, x2, y2 = map(int, values.groups())
+    return ((x1+x2)//2, (y1+y2)//2) if x2 > x1 and y2 > y1 else None
+
+
+def quickstep_anr_wait_control(root, already_waited):
+    """Allow one observed Quickstep startup ANR; reject other or repeated ANRs."""
+    system_nodes = [node for node in root.iter("node") if node.attrib.get("package") == "android"]
+    if not any(node.attrib.get("resource-id") in {"android:id/aerr_wait", "android:id/aerr_close"}
+               for node in system_nodes):
+        return None
+    titles = [node.attrib.get("text") for node in system_nodes
+              if node.attrib.get("resource-id") == "android:id/alertTitle"]
+    if titles != ["Quickstep isn't responding"]:
+        raise RuntimeError(f"Unexpected Android failure dialog during Firefox setup: {titles!r}")
+    if already_waited:
+        raise RuntimeError("Quickstep ANR repeated after the single recorded Wait recovery")
+    controls = [node for node in system_nodes if node.attrib.get("resource-id") == "android:id/aerr_wait"
+                and node.attrib.get("text") == "Wait" and node.attrib.get("clickable") == "true"
+                and node.attrib.get("enabled") == "true" and bounds(node)]
+    if len(controls) != 1:
+        raise RuntimeError("Observed Quickstep ANR has no unique enabled Android Wait control")
+    return controls[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adb", default="adb")
@@ -41,7 +69,8 @@ def main():
     artifacts = Path(args.artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
     transcript = []
-    record = {"package": PACKAGE, "serial": args.serial, "url": URL, "verified": False, "steps": []}
+    record = {"package": PACKAGE, "serial": args.serial, "url": URL, "verified": False, "steps": [],
+              "quickstep_anr_recovery": {"wait_attempts": 0, "outcome": "not_needed"}}
     prefix = [args.adb, "-s", args.serial]
 
     def command(*parts, binary=False, check=True, timeout=30):
@@ -78,13 +107,6 @@ def main():
                 yield from walk(child)
         return list(walk(root))
 
-    def bounds(node):
-        values = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
-        if not values:
-            return None
-        x1, y1, x2, y2 = map(int, values.groups())
-        return ((x1+x2)//2, (y1+y2)//2) if x2 > x1 and y2 > y1 else None
-
     try:
         if command("shell", "getprop", "sys.boot_completed") != "1":
             raise RuntimeError("Android has not completed boot")
@@ -108,11 +130,26 @@ def main():
                 "-n", f"{PACKAGE}/org.mozilla.firefox.App")
         deadline = time.monotonic() + args.max_seconds
         opened_url = False
+        quickstep_waited = False
         steps = 0
         index = 0
         while time.monotonic() < deadline and steps < args.max_pages:
             root = snapshot(index)
             index += 1
+            wait_control = quickstep_anr_wait_control(root, quickstep_waited)
+            if wait_control is not None:
+                screenshot("observed-quickstep-anr")
+                x, y = bounds(wait_control)
+                record["quickstep_anr_recovery"] = {"wait_attempts": 1, "outcome": "wait_requested"}
+                command("shell", "input", "tap", str(x), str(y))
+                record["quickstep_anr_recovery"]["outcome"] = "wait_tapped"
+                quickstep_waited = True
+                record["steps"].append({"action": "single observed Quickstep ANR Wait recovery",
+                                        "title": "Quickstep isn't responding", "bounds": wait_control.attrib["bounds"]})
+                print("::warning::Firefox fixture encountered Quickstep ANR; tapped its observed Wait control once. Recovery is recorded in result.json.", flush=True)
+                steps += 1
+                time.sleep(1)
+                continue
             nodes = chrome_nodes(root)
             parents = {child: parent for parent in root.iter() for child in parent}
             chosen = None
@@ -151,6 +188,8 @@ def main():
                         pass
                 if opened_url and address_match and not editing and bounds(field):
                     record["verified"] = True
+                    if quickstep_waited:
+                        record["quickstep_anr_recovery"]["outcome"] = "fixture_verified_after_wait"
                     record["address_control"] = {key: field.attrib.get(key) for key in ("resource-id", "text", "content-desc", "class", "bounds")}
                     screenshot("success")
                     return 0
@@ -175,6 +214,8 @@ def main():
         raise RuntimeError("Bounded preflight did not reach an unedited example.com address control")
     except Exception as error:
         record["error"] = str(error)
+        if record["quickstep_anr_recovery"]["wait_attempts"]:
+            record["quickstep_anr_recovery"]["outcome"] = "fixture_failed_after_wait"
         screenshot("failure")
         try:
             (artifacts / "failure-activity.txt").write_text(command("shell", "dumpsys", "activity", "activities", timeout=20))
