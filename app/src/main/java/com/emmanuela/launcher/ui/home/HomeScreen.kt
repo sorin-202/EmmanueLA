@@ -130,7 +130,7 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
             val textColor = if (u.widgetColor != 0L) Color(u.widgetColor) else baseColor
             val family = when (u.widgetFont) { "Sans" -> FontFamily.SansSerif; "Serif" -> FontFamily.Serif; "Monospace" -> FontFamily.Monospace; else -> MaterialTheme.typography.bodyLarge.fontFamily }
             CompositionLocalProvider(LocalContentColor provides baseColor) {
-                Column(Modifier.fillMaxSize().then(if(arranging)Modifier.clearAndSetSemantics{}else Modifier).padding(horizontal = 24.dp, vertical = 12.dp)) {
+                Column(Modifier.fillMaxSize().then(if(arranging)Modifier.clearAndSetSemantics{}else Modifier).navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp)) {
                     Spacer(Modifier.weight(1f))
                     val align = when (p.alignment) { "Left" -> Alignment.Start; "Center" -> Alignment.CenterHorizontally; else -> Alignment.End }
                     val visible = data.favorites.filter { data.policies[it.id.substringBefore('/')]?.hidden != true }.take(p.favoriteCount)

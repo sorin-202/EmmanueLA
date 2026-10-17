@@ -386,6 +386,21 @@ class LauncherFlowTest {
     			bounds.bottom <= safeBottom + 1
 )
                 }
+                assertSafeControl("Launcher settings")
+                assertSafeControl("Add app to Home")
+                // Accessibility ACTION_CLICK can activate a control covered by
+                // Android's navigation bar. Exercise the visible Home control
+                // with a real touch, then verify its destination before returning.
+                val settingsPoint=center(find("Launcher settings"))
+                val down=SystemClock.uptimeMillis()
+                for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                    val pointer=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+                    val coordinates=android.view.MotionEvent.PointerCoords().apply{x=settingsPoint.x;y=settingsPoint.y;pressure=1f;size=1f}
+                    val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(pointer),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+                    try{assertTrue("Native touch opens Launcher settings",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+                }
+                find("SETTINGS")
+                click("←")
                 click("All Apps")
                 assertSafeControl("Hidden Apps")
                 assertSafeControl("Organized Folders →")
