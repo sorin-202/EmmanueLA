@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.emmanuela.launcher.data.*
@@ -34,8 +35,58 @@ class BrowserDiagnosticsTest {
         val originalServices=Settings.Secure.getString(resolver,Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val originalEnabled=Settings.Secure.getInt(resolver,Settings.Secure.ACCESSIBILITY_ENABLED,0)
         val component=ComponentName(target,RuleEnforcementService::class.java).flattenToString()
+        fun failureChrome():String = runCatching {
+            val report=StringBuilder()
+            val addressIds=BrowserAdapters.ids.getValue(browser).toSet()
+            val pageClasses=setOf("android.webkit.WebView","org.mozilla.geckoview.GeckoView","org.mozilla.gecko.GeckoView")
+            val coachmarkLabels=setOf("Dismiss","Shake your device to summarize this page in seconds")
+            var remaining=512
+            fun visit(node:AccessibilityNodeInfo,depth:Int){
+                if(remaining--<=0||depth>40)return
+                val owner=node.packageName?.toString()
+                val klass=node.className?.toString()
+                if(klass in pageClasses){report.appendLine("depth=$depth SKIP_PAGE class=$klass");return}
+                if(owner!=browser)return
+                val id=node.viewIdResourceName.orEmpty()
+                report.append("depth=$depth class=$klass id=$id visible=${node.isVisibleToUser}")
+                if(id in addressIds||addressIds.any{id=="$browser:id/$it"}){
+                    report.append(" addressText=${node.text?.toString()?.take(256)} addressDescription=${node.contentDescription?.toString()?.take(256)} editable=${node.isEditable} focused=${node.isFocused}")
+                }else{
+                    node.text?.toString()?.takeIf{it in coachmarkLabels}?.let{report.append(" coachmark=$it")}
+                }
+                report.appendLine()
+                for(index in 0 until node.childCount){
+                    if(remaining<=0)break
+                    val child=node.getChild(index)?:continue
+                    try{visit(child,depth+1)}finally{@Suppress("DEPRECATION") child.recycle()}
+                }
+            }
+            fun describe(label:String,root:AccessibilityNodeInfo?){
+                report.appendLine("$label owner=${root?.packageName} window=${root?.windowId}")
+                if(root?.packageName?.toString()==browser){
+                    report.appendLine("$label adapter=${BrowserAdapters.read(root,browser)}")
+                    visit(root,0)
+                }
+            }
+            val active=automation.rootInActiveWindow
+            try{describe("active",active)}finally{@Suppress("DEPRECATION") active?.recycle()}
+            val windows=automation.windows
+            try{
+                windows.take(8).forEach{window->
+                    val root=window.root
+                    try{describe("window id=${window.id} type=${window.type} active=${window.isActive} focused=${window.isFocused} layer=${window.layer}",root)}
+                    finally{@Suppress("DEPRECATION") root?.recycle()}
+                }
+                if(windows.size>8)report.appendLine("Chrome diagnostic window budget exhausted")
+            }finally{windows.forEach{@Suppress("DEPRECATION") it.recycle()}}
+            if(remaining<=0)report.appendLine("Chrome diagnostic node budget exhausted")
+            report.toString()
+        }.getOrElse{"Chrome diagnostic query failed: ${it.javaClass.simpleName}: ${it.message}"}
         suspend fun waitFor(stage:String,predicate:()->Boolean){
-            assertTrue("$stage: ${EnforcementBridge.status.value}",withTimeoutOrNull(20_000){while(!predicate())delay(100);true}==true)
+            val passed=withTimeoutOrNull(20_000){while(!predicate())delay(100);true}==true
+            val message=if(passed)stage else "$stage: ${EnforcementBridge.status.value}\n${failureChrome()}"
+            if(!passed)android.util.Log.e("BrowserFixture",message)
+            assertTrue(message,passed)
         }
         try {
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(v2=V2Preferences(backgroundRules=true))),

@@ -140,7 +140,7 @@ jobs:
           script: |
             adb install "$RUNNER_TEMP/firefox.apk"
             python3 .github/scripts/prepare-firefox-fixture.py --adb "$ANDROID_HOME/platform-tools/adb" --serial emulator-5554 --artifacts "$RUNNER_TEMP/firefox-preflight"
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.emmanuela.launcher.BrowserDiagnosticsTest
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.emmanuela.launcher.BrowserDiagnosticsTest || { browser_test_status=$?; adb exec-out screencap -p > "$RUNNER_TEMP/firefox-preflight/instrumentation-failure.png" || true; exit "$browser_test_status"; }
 
       - uses: actions/upload-artifact@v4
         if: always()
