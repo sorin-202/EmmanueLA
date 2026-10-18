@@ -212,6 +212,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         if (!ready.value) return
         viewModelScope.launch { write { repository.update { state->val next=transform(state.settings);state.copy(settings=next.copy(ui=next.ui.copy(v2=next.ui.v2.copy(photoStyles=next.ui.v2.photoStyles.filterKeys{it in next.wallpapers})))) } } }
     }
+    suspend fun savePageWallpaper(page: String, wallpaper: com.emmanuela.launcher.data.PageWallpaper?): Boolean = write {
+        var previous: String? = null
+        repository.update { state ->
+            previous = state.settings.ui.pageWallpapers[page]?.uri
+            com.emmanuela.launcher.data.PageWallpapers.changed(state, page, wallpaper)
+        }
+        com.emmanuela.launcher.data.FolderImageGrants.cleanup(getApplication<Application>(), listOfNotNull(previous))
+    }
+
     fun unlockFolderWithDevice(id:String):Boolean {
         val folder=data.value.folders.find{it.id==id}?:return false
         if(!folder.biometricUnlock||!getApplication<Application>().getSystemService(android.app.KeyguardManager::class.java).isDeviceSecure)return false

@@ -14,7 +14,7 @@ object FolderImageGrants {
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun referenced(state: LauncherData): Set<String> =
-        (state.folders.map { it.imageUri } + state.settings.wallpapers + state.settings.ui.v2.wallpaperAlbum).filter { it.isNotEmpty() }.toSet()
+        (state.folders.map { it.imageUri } + state.settings.wallpapers + state.settings.ui.v2.wallpaperAlbum + state.settings.ui.pageWallpapers.values.map { it.uri }).filter { it.isNotEmpty() }.toSet()
 
     fun cleanup(context: Context, candidates: Collection<String>) {
         val documents = candidates.filter { it.isNotEmpty() }.toSet()

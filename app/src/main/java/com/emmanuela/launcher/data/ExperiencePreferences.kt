@@ -69,7 +69,9 @@ data class ExperiencePreferences(
     val reminderMinutes: Int = 30,
     val widgetScales: Map<String,Float> = emptyMap(),
     val widgetAlignments: Map<String,String> = emptyMap(),
-    val spamMode:SpamMode=SpamMode.OFF
+    val spamMode:SpamMode=SpamMode.OFF,
+    /** Null preserves the text/alphabet choice saved by older launcher versions. */
+    val homeMode:String?=null
 )
 object ExperienceCodec {
     fun encode(p:ExperiencePreferences)=JSONObject().apply {
@@ -93,6 +95,7 @@ object ExperienceCodec {
         put("cursorCharacter",p.cursorCharacter)
         put("alphabetHaptics",p.alphabetHaptics)
         put("homeAlphabet",p.homeAlphabet)
+        p.homeMode?.let { require(it in HomeModes.values); put("homeMode", it) }
         put("homeAlphabetPosition",p.homeAlphabetPosition)
         put("homeAlphabetStyle",p.homeAlphabetStyle);put("homeAlphabetAnimation",p.homeAlphabetAnimation);put("homeAlphabetHaptics",p.homeAlphabetHaptics)
         put("folderSpacing",p.folderSpacing)
@@ -166,6 +169,7 @@ object ExperienceCodec {
             cursorCharacter=o.optString("cursorCharacter",d.cursorCharacter).also{require(it.length<=2)},
             alphabetHaptics=o.optBoolean("alphabetHaptics",d.alphabetHaptics),
             homeAlphabet=o.optBoolean("homeAlphabet",d.homeAlphabet),
+            homeMode=if(o.isNull("homeMode"))null else o.getString("homeMode").also{require(it in HomeModes.values)},
             homeAlphabetStyle=choice("homeAlphabetStyle",d.homeAlphabetStyle,listOf("Minimal","Compact")),
             homeAlphabetAnimation=choice("homeAlphabetAnimation",d.homeAlphabetAnimation,listOf("None","Wave","Bubble","Fade")),
             homeAlphabetHaptics=o.optBoolean("homeAlphabetHaptics",d.homeAlphabetHaptics),
