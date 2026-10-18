@@ -3,6 +3,7 @@ package com.emmanuela.launcher
 import android.app.Application
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.ViewCompat
 import com.emmanuela.launcher.data.*
 import com.emmanuela.launcher.platform.BackgroundRuleAccess
 import com.emmanuela.launcher.ui.components.LocalLauncherLanguage
@@ -125,7 +131,7 @@ class FocusWebsiteEditorTest {
                 MaterialTheme{
                     CompositionLocalProvider(LocalLauncherLanguage provides "en"){
                         if(show.value)key(route.value,epoch.intValue){
-                            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())){
+                            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState())){
                                 FocusGroupEditor(route.value,data,apps,realModel){saves.incrementAndGet();show.value=false}
                             }
                         }
@@ -227,28 +233,87 @@ class FocusWebsiteEditorTest {
     }
 
     @Test fun websiteEditorExposesActualPermissionAndExplicitMasterWithoutChangingRuleDefaults()=withEditor {
-        input("Group name","Daily plan")
-        tab("Sites")
-        input("Website or URL path","example.com")
-        toggle("Firefox fixture")
-        val permission=BackgroundRuleAccess.enabled(instrumentation.targetContext)
-        compose.onNodeWithText(if(permission)"Allowed by Android"else "Permission required").assertExists()
-        compose.onAllNodesWithText("60 minutes",substring=true).onFirst().assertExists()
-        compose.onNodeWithContentDescription("Enforce outside launcher").assertIsOff()
-        toggle("Enforce outside launcher")
-        withTimeout(5_000){observed.filterNotNull().first{it.settings.ui.v2.backgroundRules}}
-        withTimeout(5_000){model.data.first{it.settings.ui.v2.backgroundRules}}
-        compose.onNodeWithContentDescription("Enforce outside launcher").assertIsOn()
-        assertEquals("The master switch must not grant Android Accessibility permission",permission,BackgroundRuleAccess.enabled(instrumentation.targetContext))
-        toggle("Enforce outside launcher")
-        withTimeout(5_000){observed.filterNotNull().first{!it.settings.ui.v2.backgroundRules}}
-        withTimeout(5_000){model.data.first{!it.settings.ui.v2.backgroundRules}}
-        compose.onNodeWithContentDescription("Enforce outside launcher").assertIsOff()
-        save()
-        val group=saved("Daily plan")
-        assertFalse(group.blockAlways)
-        assertEquals(60,group.dailyMinutes)
-        assertTrue(group.pause)
-        assertFalse(repository.data.first().settings.ui.v2.backgroundRules)
+        val masterLabel="Enforce outside launcher"
+        var stage="initial editor"
+        fun imeVisible():Boolean?{
+            var visible:Boolean?=null
+            instrumentation.runOnMainSync{
+                val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).singleOrNull()
+                visible=activity?.window?.decorView?.let{ViewCompat.getRootWindowInsets(it)?.isVisible(WindowInsetsCompat.Type.ime())}
+            }
+            return visible
+        }
+        fun diagnostics():String {
+            val node=runCatching{compose.onNodeWithContentDescription(masterLabel).fetchSemanticsNode()}.getOrNull()
+            return "stage=$stage; observed=${observed.value?.settings?.ui?.v2?.backgroundRules}; model=${model.data.value.settings.ui.v2.backgroundRules}; " +
+                "UI=${node?.config?.getOrNull(SemanticsProperties.ToggleableState)}; bounds=${node?.boundsInRoot}; IME=${imeVisible()}; ready=${model.ready.value}; error=${model.error.value}"
+        }
+        fun checkpoint(value:String){
+            stage=value
+            android.util.Log.i("FocusEditorFixture",diagnostics())
+        }
+        fun touchMaster(value:String){
+            checkpoint("$value: before native touch")
+            instrumentation.runOnMainSync{
+                val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).single()
+                WindowInsetsControllerCompat(activity.window,activity.window.decorView).hide(WindowInsetsCompat.Type.ime())
+            }
+            compose.onNodeWithContentDescription(masterLabel).performScrollTo()
+            var previous:androidx.compose.ui.geometry.Rect?=null
+            var stable=0
+            var lastSample=0L
+            compose.waitUntil(5_000){
+                val now=android.os.SystemClock.uptimeMillis()
+                if(now-lastSample<100)false else{
+                    lastSample=now
+                    val bounds=compose.onNodeWithContentDescription(masterLabel).fetchSemanticsNode().boundsInRoot
+                    val settled=imeVisible()==false&&!bounds.isEmpty
+                    stable=if(settled&&bounds==previous)stable+1 else if(settled)1 else 0
+                    previous=bounds
+                    stable>=3
+                }
+            }
+            checkpoint("$value: three stable geometry samples")
+            // Reacquire the rendered switch; performTouchInput injects a finger tap,
+            // rather than invoking its semantic callback while the IME moves it.
+            compose.onNodeWithContentDescription(masterLabel).assertIsDisplayed().performTouchInput{click()}
+            checkpoint("$value: after native touch")
+        }
+        suspend fun awaitMaster(value:String,expected:Boolean){
+            checkpoint("$value: persisted state")
+            withTimeout(5_000){observed.filterNotNull().first{it.settings.ui.v2.backgroundRules==expected}}
+            checkpoint("$value: model state")
+            withTimeout(5_000){model.data.first{it.settings.ui.v2.backgroundRules==expected}}
+            checkpoint("$value: state confirmed")
+        }
+        try{
+            input("Group name","Daily plan")
+            tab("Sites")
+            input("Website or URL path","example.com")
+            toggle("Firefox fixture")
+            val permission=BackgroundRuleAccess.enabled(instrumentation.targetContext)
+            compose.onNodeWithText(if(permission)"Allowed by Android"else "Permission required").assertExists()
+            compose.onAllNodesWithText("60 minutes",substring=true).onFirst().assertExists()
+            compose.onNodeWithContentDescription("Enforce outside launcher").assertIsOff()
+            touchMaster("enable master")
+            awaitMaster("enable master",true)
+            compose.onNodeWithContentDescription("Enforce outside launcher").assertIsOn()
+            assertEquals("The master switch must not grant Android Accessibility permission",permission,BackgroundRuleAccess.enabled(instrumentation.targetContext))
+            touchMaster("disable master")
+            awaitMaster("disable master",false)
+            compose.onNodeWithContentDescription("Enforce outside launcher").assertIsOff()
+            checkpoint("save default daily rule")
+            save()
+            val group=saved("Daily plan")
+            assertFalse(group.blockAlways)
+            assertEquals(60,group.dailyMinutes)
+            assertTrue(group.pause)
+            assertFalse(repository.data.first().settings.ui.v2.backgroundRules)
+            checkpoint("all permission and default-rule assertions passed")
+        }catch(failure:Throwable){
+            val details=diagnostics()
+            android.util.Log.e("FocusEditorFixture",details,failure)
+            throw AssertionError("Website editor permission/master workflow failed: $details",failure)
+        }
     }
 }
