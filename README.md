@@ -4,7 +4,7 @@
 
 A minimalist Android launcher for intentional phone use. Local settings, deliberate search, organized folders and optional focus rules. This project continues the existing v2.6 application and preserves its identity and data format.
 
-**Version:** 2.6.0-beta · **Android:** 8.0/API26 or newer · **License:** MIT
+**Version:** 2.6.1-beta · **Android:** 8.0/API26 or newer · **License:** MIT
 
 ## What it does
 
@@ -19,7 +19,7 @@ A minimalist Android launcher for intentional phone use. Local settings, deliber
 
 Launcher entry checks and optional accessibility enforcement have different boundaries. Apps can still be opened through other Android surfaces when accessibility enforcement is disabled or restricted. Private Space protects launcher entry points; it does not encrypt or isolate other apps.
 
-Website blocking is **best-effort visible-address matching**, not a VPN. The implementation now handles Firefox's Compose address control as well as traditional browser address fields. Adapter implementation and actual browser/version verification are separate; see the [browser/mode evidence](docs/BROWSER_COMPATIBILITY.md) and [current acceptance evidence](docs/DEVICE_REPAIR_VALIDATION.md). Unsupported or unreadable states produce diagnostics. Selective native Shorts/Reels/feed filtering is unsupported.
+Website blocking is **best-effort visible-address matching**, not a VPN. The implementation handles supported browser address fields, domain/path targets such as `youtube.com/shorts`, and local URL keywords. Selective paths require the full address to be exposed; see the [Live the Moment repair and configuration](docs/LIVE_MOMENT_URL_REPAIR.md). Adapter implementation and actual browser/version verification are separate; see the [browser/mode evidence](docs/BROWSER_COMPATIBILITY.md) and [original acceptance record](docs/DEVICE_REPAIR_VALIDATION.md). Unsupported or unreadable states produce diagnostics. Selective native Shorts/Reels/feed filtering is unsupported.
 
 ## Privacy
 
@@ -27,7 +27,7 @@ No accounts, ads or analytics. Configuration and focus rules stay on the device.
 
 ## Install and build
 
-For beta testing, open **Actions → Validate EmmanueLA → a successful main-branch run → Artifacts → EmmanueLA-APK**. Extract the ZIP and install **EmmanueLA.apk**. It is the R8-minified, resource-shrunk release APK, signed with a dedicated beta key and checked for signature, non-debuggable status and API35 emulator installation. Both existing validation jobs must pass before signing. No GitHub Release or Google Play publication is created.
+For beta testing, open **Actions → Validate EmmanueLA → a successful main-branch run → Artifacts → EmmanueLA-APK**. Extract the ZIP and install **EmmanueLA.apk**. It is the R8-minified, resource-shrunk release APK, signed with a dedicated beta key and checked for signature, non-debuggable status and API35 emulator installation. All validation jobs must pass before signing. No GitHub Release or Google Play publication is created.
 
 The beta signing identity must remain stable for updates. An existing installation signed with a different key cannot be updated in place; export any needed launcher configuration before choosing to uninstall it. Physical-device compatibility is not certified by emulator checks. Maintainer setup and signing boundaries are in [beta APK signing](docs/BETA_APK.md). The separate `EmmanueLA-builds` artifact still contains development/unsigned build outputs.
 
@@ -42,7 +42,7 @@ On Windows use `gradlew.bat`. Outputs are under `app/build/outputs/`. Select Emm
 
 ## Validation and roadmap
 
-Physical-device observations supersede earlier completion reports. The current repair's per-item status, exact commands, test outcomes, CI results and remaining physical checks are recorded in [device repair validation](docs/DEVICE_REPAIR_VALIDATION.md). The [implementation inventory](docs/DEVICE_REPAIR_IMPLEMENTATION.md) explains the root causes and changed paths; [widget import schema](docs/WIDGET_STYLE_SCHEMA.md), [folder appearance and size](docs/folder-appearance-and-size.md), [notification filtering](docs/NOTIFICATION_FILTERING.md) and [search behavior](docs/SEARCH.md) document operation and limits.
+Physical-device observations supersede earlier completion reports. The focused Live the Moment app/site/URL-keyword repair, configuration, tests and remaining physical checks are recorded in [Live the Moment validation](docs/LIVE_MOMENT_URL_REPAIR.md). The original repair's per-item status and historical results remain in [device repair validation](docs/DEVICE_REPAIR_VALIDATION.md). The [implementation inventory](docs/DEVICE_REPAIR_IMPLEMENTATION.md) explains the root causes and changed paths; [widget import schema](docs/WIDGET_STYLE_SCHEMA.md), [folder appearance and size](docs/folder-appearance-and-size.md), [notification filtering](docs/NOTIFICATION_FILTERING.md) and [search behavior](docs/SEARCH.md) document operation and limits.
 
 Earlier engineering reports and measurements remain historical records. Compilation, JVM checks and emulator results do not certify physical enforcement, OEM lifecycle behavior, gesture feel, battery performance or document-provider access.
 

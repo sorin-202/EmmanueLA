@@ -1,4 +1,6 @@
-# Physical-device repair validation report
+# Original physical-device repair validation report
+
+**Historical snapshot.** The counts, artifacts and checkpoints below describe the original repair through `fcd9ecd`. The later Live the Moment app/site/URL-keyword repair is documented in [LIVE_MOMENT_URL_REPAIR.md](LIVE_MOMENT_URL_REPAIR.md). At `e67b7ce`, its required clean command passed locally and in CI; 198 JVM tests passed, general Android instrumentation passed 48 cases with 3 expected browser-prerequisite skips, and the dedicated Firefox job passed those 3 browser cases. All 51 unique Android methods passed across the two fixtures. The first final-checkpoint general attempt failed with an observed Quickstep system ANR; the same job passed on one fresh-VM retry, as documented in the focused report. Physical-device acceptance remains pending. Earlier evidence and failures below are retained as history, not substituted for the later results.
 
 **Report state: host validation, general Android instrumentation and dedicated Firefox instrumentation passed at `02c3d60`; physical acceptance remains pending.** The corrected search-action case passed its exact persisted-state and recreation checks. Earlier failures and the limits of their diagnosis remain recorded below; passing automated checks alone does not establish physical acceptance.
 

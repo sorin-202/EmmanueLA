@@ -1,6 +1,6 @@
 # Physical-device repair implementation inventory
 
-This inventory describes source changes from baseline `b3de953` through checkpoint `02c3d60`, including the quick AppDetails Digest integration, caret and digest-publication repairs, widget typography, the native Home navigation correction, official-browser test setup, browser diagnostic transition repair, and continuous search-action persistence observation in instrumentation. It also includes the current reporting additions. It was written after inspecting the implementation, baseline diffs, and test definitions. The physical-device observations in the request remain the acceptance requirements.
+This inventory describes source changes from baseline `b3de953` through checkpoint `e67b7ce`, including the quick AppDetails Digest integration, caret and digest-publication repairs, widget typography, the native Home navigation correction, official-browser test setup, browser diagnostic transition repair, and continuous search-action persistence observation in instrumentation. The focused Live the Moment follow-up repairs selective website paths, URL keywords, editor validation/state, complete browser address extraction and callback recovery; see [LIVE_MOMENT_URL_REPAIR.md](LIVE_MOMENT_URL_REPAIR.md) for current results. It also includes the current reporting additions. It was written after inspecting the implementation, baseline diffs, and test definitions. The physical-device observations in the request remain the acceptance requirements.
 
 This document records implementation evidence, not completion certification. Test names below identify assertions present in the repository; they do not assert that those tests ran successfully. Build, JVM, Android instrumentation, CI, and physical-device results belong in the separate `DEVICE_REPAIR_VALIDATION.md` report.
 
@@ -90,7 +90,7 @@ The service evaluates Strict Block, app/group usage and session limits, schedule
 
 **Root cause.** The old reader relied on legacy address resource IDs and text values; it missed Firefox display descriptions and Compose toolbar tags. Address-state ambiguity, ownership, normalization, and enforcement-result diagnostics were incomplete.
 
-**Correction.** The event path reads only configured browsers' address controls, checks owning package/visibility, and waits while a focused address editor is still being typed. Adapters cover named Chrome/Chrome Beta, Brave, Edge, Firefox, and Samsung Internet controls. Firefox's `ADDRESSBAR_URL_BOX` fallback performs a bounded scan of chrome metadata and skips WebView/GeckoView page content. It accepts one unambiguous address token. `FocusWindows.host` normalizes HTTP(S) domains, IDNs, case and trailing dots, rejects credentials/unsafe forms, and preserves domain/subdomain boundaries; keyword matching also handles encoded URL text.
+**Correction.** The event path reads only configured browsers' address controls, checks owning package/visibility, and waits while a focused address editor is still being typed. Adapters cover named Chrome/Chrome Beta, Brave, Edge, Firefox, and Samsung Internet controls. Firefox's `ADDRESSBAR_URL_BOX` fallback performs a bounded scan of chrome metadata and skips WebView/GeckoView page content. It reconciles compatible address candidates and rejects contradictory hosts or URL details. `FocusWindows.host` normalizes HTTP(S) domains, IDNs, case and trailing dots, rejects credentials/unsafe forms, and preserves domain/subdomain boundaries; keyword matching also handles encoded URL text.
 
 Distinct diagnostics identify unsupported browsers, foreign windows, missing controls, editing, unreadable addresses, and tree-query failures. The service reports an overlay only after WindowManager accepts it; successful Home API calls are reported as requests, and failures remain visible. It does not store or transmit visited URLs/page contents. See [BROWSER_COMPATIBILITY.md](BROWSER_COMPATIBILITY.md).
 
@@ -105,6 +105,14 @@ Browser setup does not enable EmmanueLA Accessibility, change Firefox preference
 **Delayed first-run browser hint.** The independent `1529d54` browser run exposed a late Firefox recommendation popup after the external setup had already verified the address bar. Failure-time chrome contained only Firefox's native `cfr.dismiss` button and hint; the address control was absent from the exposed popup root. A screenshot confirmed the “Shake your device to summarize this page in seconds” first-run tip. The service reported the unavailable address rather than claiming a block. Checkpoint `15ea8b2` finishes this exact fixture prerequisite inside the existing 20-second address-readability wait: it requires the observed Firefox-owned native hint text/button metadata, accepts Android ACTION_CLICK once, logs the dismissal, and then requires every original address/overlay/visible-reason/Home-retention assertion. It skips web page content and does not click browser controls in production. Other or repeated prompts are not automatically dismissed. The corrected run `39072838524` passed the complete browser test with this late-hint dismissal actually exercised once. This corrects setup readiness; it does not claim that every obscured browser state supports URL enforcement.
 
 **Compile before booting the fixtures.** Checkpoint `a52c86f` builds both debug APKs with `:app:assembleDebug :app:assembleDebugAndroidTest` before starting either CI emulator. The regression and Firefox jobs then run their existing connected-test commands against those APKs. This avoids competing APK compilation and guest startup on the same CI runner; it does not increase assertion deadlines, disable animations, or convert setup failures into skipped tests. Local software-only emulation produced Android framework ANRs and could not certify browser enforcement; the dedicated KVM job supplies the actual-browser test environment.
+
+**Focused Live the Moment follow-up.** The website editor previously discarded `/shorts` when normalizing a site to its host, and the old matcher treated path targets as whole-domain rules. `FocusWebsiteRules.kt` now validates and persists domains with optional paths, checks domain/subdomain and path-segment boundaries, and requires a supported selected browser for every web-targeted group, including mixed app/web groups. `FocusWindows.kt` preserves literal path/fragment plus signs, decodes query spaces separately, and normalizes equivalent Unicode for URL keywords. Independent saveable pending fields and draft state include valid pending targets on Save; invalid entries leave saved state unchanged. The editor exposes the existing enforcement master switch and actual Accessibility/service state, explains immediate continuous blocking, and keeps existing allowance defaults.
+
+The browser reader reconciles compatible abbreviated/full address candidates, preserves URL punctuation (including bracketed query parameters) and encoded aliases, and explicitly rejects conflicting controls. A domain-only result reports partial path/query coverage. Callbacks can recover the actual foreground app/browser after a transient unavailable root, including scroll events. Configuration changes cancel and clear an older browser-read slot before requesting the updated URL. An existing verified block survives a same-domain abbreviation until a detailed allowed address or foreground transition is verified. No busy polling or new production dependency is introduced.
+
+**Focused test definitions.** `FocusUrlKeywordTest` and `FocusWebsiteRulesTest` cover selective YouTube `/shorts` versus ordinary `/watch`, encoding, Unicode, persistence and supported-browser validation. Eight additional `BrowserAdapterTest` cases cover address detail/ambiguity/coverage. Four `FocusWebsiteEditorTest` methods exercise editor → model → DataStore, restoration, validation and permission/master controls. Two additional `BrowserDiagnosticsTest` methods exercise official Firefox with controlled path/keyword URLs and a Shorts-style path that allows ordinary watch URLs before and after a block. Actual YouTube strings are unit-tested; real YouTube playback and physical-device navigation remain unverified. App, site and URL-keyword acceptance remains **IMPLEMENTED + NEEDS PHYSICAL DEVICE TEST**, with exact runtime evidence in [LIVE_MOMENT_URL_REPAIR.md](LIVE_MOMENT_URL_REPAIR.md).
+
+The editor instrumentation fixture now mirrors the production shell's IME padding. Its master/permission method dismisses the keyboard through Android, verifies the actual hidden inset and stable switch geometry before a native finger tap, and logs the persisted/model/UI states before cleanup. Separate five-second state waits and every permission/default-rule assertion remain. The preceding unlabeled timeout does not prove which state wait or interaction failed; current execution results are recorded in the focused report.
 
 ## 10. Notification digester
 
@@ -130,14 +138,14 @@ Nonclearable/ongoing/foreground-service, group-summary, call, alarm, media, navi
 
 - Accessibility and Notification Access are optional Android-controlled permissions. Revocation, force-stop, lock state, reboot/unlock rebinding, manufacturer battery policies, and unavailable windows can interrupt service behavior. A persisted rule or enabled UI switch does not establish that Android is currently enforcing it.
 - App enforcement targets the focused application window. System permission, lock-screen and known emergency controls remain reachable. Recents, notification/deep-link launches, split screen, reboot, battery restrictions, and real authentication flows still need device-specific observation.
-- URL enforcement is an Accessibility overlay, not a network firewall. Browser versions, private modes and hidden/inaccessible toolbars can prevent extraction; unlisted browsers have no adapter. Android supplies no per-site usage totals, so website usage limits count browser usage. Selective Shorts/Reels/feed removal is unsupported.
+- URL enforcement is an Accessibility overlay, not a network firewall. Browser versions, private modes and hidden/inaccessible toolbars can prevent extraction; unlisted browsers have no adapter. Android supplies no per-site usage totals, so website usage limits count browser usage. Selective browser Shorts paths are implemented when the full URL is exposed; native-app Shorts/Reels/feed removal is unsupported.
 - Document providers own document availability and grant behavior. Real provider selection, rotation during editing, restarts, deletion/revocation, large images/fonts, narrow screens and preview/Home visual parity need physical-device checks.
 - Notification filtering happens after posting and cannot undo a sound/heads-up alert already produced. WorkManager has a 15-minute minimum periodic interval and approximate delivery. Android may redact content. Incorrectly categorized or unrecognized critical messages cannot be identified perfectly; essential-app allowlisting remains available.
 - Android offers no general listener API to restore an original cancelled notification with its source identity and actions. The implementation retains counts/reasons, offers the source-app path, and allows future notifications; it does not promise restoration of originals. Stronger spam heuristics can produce false positives and require real-app tuning.
 
 ## Test/build support and compatibility changes
 
-Compose UI-test and WorkManager test dependencies support the new Android scenarios; the Compose test activity is debug-only. Android-test manifest/resource fixtures support foreground and address-control tests. The production manifest adds HTTPS browser package visibility. Accessibility event subscriptions now include window changes, view text/focus changes, view IDs, and interactive windows. No new production dependency was added for styles, history, folder appearance, or spam classification. The Gradle wrapper executable-bit correction supports the requested `./gradlew` commands.
+Compose UI-test and WorkManager test dependencies support the new Android scenarios; the Compose test activity is debug-only. Android-test manifest/resource fixtures support foreground and address-control tests. The production manifest adds HTTPS browser package visibility. Accessibility event subscriptions now include window changes, view text/focus/scroll changes, view IDs, and interactive windows. No new production dependency was added for styles, history, folder appearance, or spam classification. The Gradle wrapper executable-bit correction supports the requested `./gradlew` commands.
 
 The browser preflight also records a single narrowly scoped recovery for the exact observed Android Quickstep ANR: it can tap Android's enabled `android:id/aerr_wait` once, captures the dialog, and emits a CI warning. Other apps' ANRs, repeated Quickstep ANRs, and disabled or ambiguous controls fail. It does not close or disable a system package, suppress dialogs, change application permissions, or extend the existing 180-second bound. Five Python host tests check those boundaries; fixture success still requires Firefox's real unedited example address and the separate Android enforcement test.
 
@@ -145,7 +153,7 @@ The Android gesture/navigation fixtures now sample current rendered controls and
 
 ## Baseline-relative changed-file inventory
 
-The 86 paths below include implementation, tests, test support, CI workflow/browser setup and documentation relative to `b3de953`. The inventory is regenerated from Git's baseline-relative changed paths. It is a source snapshot; later validation/report-only commits are identified separately in the validation report.
+The 92 paths below include implementation, tests, test support, CI workflow/browser setup and documentation relative to `b3de953`, including the focused Live the Moment follow-up. The inventory is regenerated from Git's baseline-relative changed paths. Execution results and physical acceptance are recorded separately in the linked validation reports.
 
 ```text
 .github/scripts/prepare-firefox-fixture.py
@@ -157,6 +165,7 @@ app/src/androidTest/AndroidManifest.xml
 app/src/androidTest/java/com/emmanuela/launcher/BrowserDiagnosticsTest.kt
 app/src/androidTest/java/com/emmanuela/launcher/FocusFixtureActivity.kt
 app/src/androidTest/java/com/emmanuela/launcher/FocusServiceTest.kt
+app/src/androidTest/java/com/emmanuela/launcher/FocusWebsiteEditorTest.kt
 app/src/androidTest/java/com/emmanuela/launcher/FolderAppearancePersistenceTest.kt
 app/src/androidTest/java/com/emmanuela/launcher/FolderUiTest.kt
 app/src/androidTest/java/com/emmanuela/launcher/HomeDragTest.kt
@@ -174,6 +183,7 @@ app/src/main/java/com/emmanuela/launcher/LauncherViewModel.kt
 app/src/main/java/com/emmanuela/launcher/data/Configuration.kt
 app/src/main/java/com/emmanuela/launcher/data/ExperiencePreferences.kt
 app/src/main/java/com/emmanuela/launcher/data/FocusTargets.kt
+app/src/main/java/com/emmanuela/launcher/data/FocusWebsiteRules.kt
 app/src/main/java/com/emmanuela/launcher/data/FocusWindows.kt
 app/src/main/java/com/emmanuela/launcher/data/FolderAppearance.kt
 app/src/main/java/com/emmanuela/launcher/data/FolderGridLayout.kt
@@ -209,6 +219,7 @@ app/src/main/java/com/emmanuela/launcher/ui/home/HomeScreen.kt
 app/src/main/java/com/emmanuela/launcher/ui/home/HomeShortcuts.kt
 app/src/main/java/com/emmanuela/launcher/ui/home/HomeWidgets.kt
 app/src/main/java/com/emmanuela/launcher/ui/mindful/FocusEnforcementStatus.kt
+app/src/main/java/com/emmanuela/launcher/ui/mindful/FocusUi.kt
 app/src/main/java/com/emmanuela/launcher/ui/settings/NotificationRuleEditor.kt
 app/src/main/java/com/emmanuela/launcher/ui/settings/StructuredSettings.kt
 app/src/main/java/com/emmanuela/launcher/ui/settings/WidgetStyleControls.kt
@@ -216,6 +227,8 @@ app/src/main/res/xml/rule_enforcement.xml
 app/src/test/java/com/emmanuela/launcher/BrowserAdapterTest.kt
 app/src/test/java/com/emmanuela/launcher/ConfigurationTest.kt
 app/src/test/java/com/emmanuela/launcher/FocusTargetsTest.kt
+app/src/test/java/com/emmanuela/launcher/FocusUrlKeywordTest.kt
+app/src/test/java/com/emmanuela/launcher/FocusWebsiteRulesTest.kt
 app/src/test/java/com/emmanuela/launcher/FolderAppearanceTest.kt
 app/src/test/java/com/emmanuela/launcher/FolderGridDimensionsTest.kt
 app/src/test/java/com/emmanuela/launcher/HomePlacementTest.kt
@@ -228,6 +241,7 @@ docs/BROWSER_COMPATIBILITY.md
 docs/DEVICE_REPAIR_IMPLEMENTATION.md
 docs/DEVICE_REPAIR_VALIDATION.md
 docs/HOME_INTERACTIONS.md
+docs/LIVE_MOMENT_URL_REPAIR.md
 docs/NOTIFICATION_FILTERING.md
 docs/PRIVACY.md
 docs/SEARCH.md
