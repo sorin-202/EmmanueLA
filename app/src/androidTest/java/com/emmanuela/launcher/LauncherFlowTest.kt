@@ -463,7 +463,43 @@ class LauncherFlowTest {
                 click("Clear history")
                 kotlinx.coroutines.withTimeout(15_000){webHistory.queries.first{it.isEmpty()}}
                 click("Home")
-                click("Launcher settings")
+                // AnimatedContent briefly exposes incoming Home semantics while the
+                // drawer is leaving. Reacquire current geometry, then exercise the
+                // rendered Settings button instead of invoking a detached node.
+                val deadline=SystemClock.uptimeMillis()+5_000
+                var previous:Pair<Int,android.graphics.Rect>?=null
+                var stable=0
+                var settingsPoint:android.graphics.PointF?=null
+                while(SystemClock.uptimeMillis()<deadline){
+                    val root=instrumentation.uiAutomation.rootInActiveWindow
+                    val tree=nodes(root)
+                    val drawerGone=tree.none{it.isVisibleToUser&&it.className?.toString()=="android.widget.EditText"}
+                    val settings=tree.firstOrNull{it.isVisibleToUser&&it.isEnabled&&it.isClickable&&
+                        it.packageName?.toString()==instrumentation.targetContext.packageName&&it.contentDescription?.toString()=="Launcher settings"}
+                    if(root?.packageName?.toString()==instrumentation.targetContext.packageName&&drawerGone&&settings!=null){
+                        val bounds=android.graphics.Rect().also(settings::getBoundsInScreen)
+                        val current=settings.windowId to bounds
+                        stable=if(!bounds.isEmpty&&current==previous)stable+1 else 0
+                        previous=current
+                        if(stable>=3){
+                            settingsPoint=android.graphics.PointF(bounds.exactCenterX(),bounds.exactCenterY())
+                            android.util.Log.i("LauncherFlowFixture","Home settled: Settings window=${settings.windowId}, bounds=$bounds, stableSamples=$stable, drawerGone=$drawerGone")
+                            break
+                        }
+                    }else{stable=0;previous=null}
+                    SystemClock.sleep(100)
+                }
+                assertNotNull("Home Settings must settle after drawer removal; last=$previous; visible="+
+                    nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}.mapNotNull{it.text?:it.contentDescription},settingsPoint)
+                val point=settingsPoint!!
+                val down=SystemClock.uptimeMillis()
+                for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                    val pointer=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+                    val coordinates=android.view.MotionEvent.PointerCoords().apply{x=point.x;y=point.y;pressure=1f;size=1f}
+                    val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(pointer),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+                    try{assertTrue("Native Home Settings touch must be accepted",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+                }
+                find("SETTINGS")
                 click("Live the Moment",scroll=true)
                 click("Test Focus",scroll=true)
                 click("Take a Break",scroll=true)
