@@ -32,7 +32,29 @@ object FocusWindows {
         val normalized=java.net.IDN.toASCII(host.removeSuffix("."),java.net.IDN.USE_STD3_ASCII_RULES).lowercase()
         normalized.takeIf { it.length<=253 && it.contains('.') && it.split('.').all { part -> part.length in 1..63 } }
     }.getOrNull()
-    fun matches(g:FocusGroup,url:String):Boolean{val actualHost=host(url)?:return false;return g.websites.any{site->val d=host(site);d!=null&&(actualHost==d||actualHost.endsWith(".$d"))}||g.keywords.any{keyword->url.contains(keyword,ignoreCase=true)||runCatching{java.net.URLDecoder.decode(url,"UTF-8").contains(keyword,ignoreCase=true)}.getOrDefault(false)}}
+    fun matches(g:FocusGroup,url:String):Boolean {
+        if(host(url)==null)return false
+        if(FocusWebsiteRules.matchesAnySite(g.websites,url))return true
+        if(g.keywords.isEmpty())return false
+        fun normalize(value:String)=java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFC)
+        // '+' is literal in paths/fragments. Form-style spaces apply only to a query.
+        fun decode(value:String)=java.net.URLDecoder.decode(value.replace("+","%2B"),"UTF-8")
+        val forms=mutableListOf(normalize(url))
+        runCatching { normalize(decode(url)) }.getOrNull()?.let(forms::add)
+        runCatching {
+            val uri=URI(if(url.contains("://"))url else "https://$url")
+            val query=uri.rawQuery
+            if(query!=null&&'+' in query){
+                val start=url.indexOf('?')+1
+                val end=url.indexOf('#',start).takeIf{it>=0}?:url.length
+                normalize(decode(url.substring(0,start))+java.net.URLDecoder.decode(query,"UTF-8")+decode(url.substring(end)))
+            }else null
+        }.getOrNull()?.let{forms+=it}
+        return g.keywords.any { keyword ->
+            val target=FocusWebsiteRules.keyword(keyword)?.let(::normalize)?:return@any false
+            forms.any{it.contains(target,ignoreCase=true)}
+        }
+    }
     fun nextBoundary(g:FocusGroup,now:ZonedDateTime):Long?{
         val windows=g.windows+if(g.schedule)listOf(FocusWindow(g.days,g.startMinute,g.endMinute,"Strict block"))else emptyList()
         val breakDelay=(g.breakUntil-now.toInstant().toEpochMilli()).takeIf{g.breakStartedAt>0&&now.toInstant().toEpochMilli()>=g.breakStartedAt&&it>0}

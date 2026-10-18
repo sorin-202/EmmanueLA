@@ -372,17 +372,23 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     ToggleRow("Enforce outside launcher",v.backgroundRules){yes->model.v2Settings{it.copy(backgroundRules=yes)}}
                     com.emmanuela.launcher.ui.mindful.FocusEnforcementStatus(v.backgroundRules,::open)
                     val focusNow=com.emmanuela.launcher.ui.mindful.rememberFocusTime()
+                    val enforcement by com.emmanuela.launcher.platform.EnforcementBridge.status.collectAsStateWithLifecycle()
                     SectionLabel("Groups")
                     data.focusGroups.forEach{g->Column(Modifier.fillMaxWidth().clickable{navigate("group:${g.id}")}.padding(vertical=16.dp)){
                         Text(g.name,style=MaterialTheme.typography.titleMedium)
                         Text(apps.filter{it.packageName in g.packages}.distinctBy{it.packageName}.joinToString{it.label},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(when {
-                            com.emmanuela.launcher.data.FocusWindows.strict(g,focusNow)->"Active · Strict Block"
+                            com.emmanuela.launcher.data.FocusWindows.strict(g,focusNow)->"Strict Block configured"
                             com.emmanuela.launcher.data.FocusWindows.onBreak(g,focusNow)->"Break active"
                             g.dailyMinutes>0->"${g.dailyMinutes} min/day"
                             else->"No daily limit"
                         },style=MaterialTheme.typography.bodySmall)
                         if(g.websites.isNotEmpty())Text("Sites: ${g.websites.joinToString()}",style=MaterialTheme.typography.bodySmall)
+                        if(g.keywords.isNotEmpty())Text("URL keywords: ${g.keywords.joinToString()}",style=MaterialTheme.typography.bodySmall)
+                        val webError=remember(g){com.emmanuela.launcher.data.FocusWebsiteRules.configurationError(g,com.emmanuela.launcher.platform.BrowserAdapters.ids.keys)}
+                        if(webError!=null)Text(webError,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                        else if(com.emmanuela.launcher.data.FocusWebsiteRules.hasWebTargets(g)&&(!v.backgroundRules||!enforcement.connected))
+                            Text("Website rules inactive: enable background enforcement and Accessibility, and wait for the service connection.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                         Text(if(g.strict&&g.requireAuthentication)"Changes protected by device authentication"else "Changes are not protected",style=MaterialTheme.typography.bodySmall)
                         HorizontalDivider(Modifier.padding(top=16.dp),color=MaterialTheme.colorScheme.outline.copy(alpha=.15f))
                     }}

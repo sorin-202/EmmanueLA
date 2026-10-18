@@ -2,6 +2,7 @@
 package com.emmanuela.launcher.ui.mindful
 
 import com.emmanuela.launcher.LauncherViewModel
+import com.emmanuela.launcher.ContextSafeOpen
 import com.emmanuela.launcher.data.*
 import com.emmanuela.launcher.ui.settings.ChoiceRow
 import com.emmanuela.launcher.platform.BrowserAdapters
@@ -24,8 +25,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.repeatOnLifecycle
@@ -35,31 +38,94 @@ import kotlinx.coroutines.launch
 @Composable
 fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:LauncherViewModel,done:()->Unit) {
     val original=data.focusGroups.find{it.id==id}
-    var draft by remember(id){mutableStateOf(original?:FocusGroup())}
+    val draftSaver=remember(id){androidx.compose.runtime.saveable.listSaver<FocusGroup,String>(
+        save={group->listOf(group.name,FocusCodec.encode(listOf(group.copy(name=group.name.ifEmpty{"Draft"}))).toString())},
+        restore={saved->runCatching{FocusCodec.decode(org.json.JSONArray(saved[1])).single().copy(name=saved[0])}.getOrNull()}
+    )}
+    var draft by rememberSaveable(id,stateSaver=draftSaver){mutableStateOf(original?:FocusGroup())}
     var busy by remember{mutableStateOf(false)}
+    var blockTab by rememberSaveable(id){mutableStateOf("Apps")}
+    var pendingSite by rememberSaveable(id){mutableStateOf("")}
+    var pendingKeyword by rememberSaveable(id){mutableStateOf("")}
+    var validationError by remember(id){mutableStateOf<String?>(null)}
+    val context=LocalContext.current
     val scope=rememberCoroutineScope();val auth=rememberDeviceAuthentication(data.settings.ui.experience.authentication,model::authenticationChanged)
-    fun commit(delete:Boolean=false){val work={scope.launch{busy=true;if(if(delete)model.deleteFocusGroup(draft.id)else model.saveFocusGroup(draft.copy(breakStartedAt=original?.breakStartedAt?:0L,breakUntil=original?.breakUntil?:0L)))done();busy=false};Unit}
+    fun withPendingEntries(site:String=pendingSite,keyword:String=pendingKeyword):FocusGroup?{
+        var next=draft
+        if(site.isNotEmpty()){
+            val value=FocusWebsiteRules.site(site)
+            if(value==null){validationError="Enter a valid website or URL path without a query or fragment, such as youtube.com/shorts. Use URL keywords for query matching.";return null}
+            if(value !in next.websites&&next.websites.size>=200){validationError="A group can contain at most 200 websites.";return null}
+            next=next.copy(websites=next.websites+value)
+        }
+        if(keyword.isNotEmpty()){
+            val value=FocusWebsiteRules.keyword(keyword)
+            if(value==null){validationError="Enter a URL keyword of 1–512 characters without control characters.";return null}
+            if(value !in next.keywords&&next.keywords.size>=200){validationError="A group can contain at most 200 URL keywords.";return null}
+            next=next.copy(keywords=next.keywords+value)
+        }
+        return next
+    }
+    fun commit(delete:Boolean=false){
+        val next=if(delete)draft else withPendingEntries()?:return
+        if(!delete){
+            validationError=when{
+                next.name.isBlank()->"Enter a group name."
+                next.packages.isEmpty()&&!FocusWebsiteRules.hasWebTargets(next)->"Select an app or enter a website or URL keyword."
+                next.schedule&&next.days.isEmpty()->"Select at least one day for the scheduled block."
+                else->FocusWebsiteRules.configurationError(next,BrowserAdapters.ids.keys)
+            }
+            if(validationError!=null)return
+            draft=next;pendingSite="";pendingKeyword=""
+        }
+        val work={scope.launch{
+            busy=true
+            try{
+                val saved=if(delete)model.deleteFocusGroup(next.id)else model.saveFocusGroup(next.copy(breakStartedAt=original?.breakStartedAt?:0L,breakUntil=original?.breakUntil?:0L))
+                if(saved)done()else validationError=model.error.value?:"Could not save changes. Please try again."
+            }finally{busy=false}
+        };Unit}
         if(original?.strict==true&&original.requireAuthentication)auth("Edit strict group"){model.authorizeStrictGroup(draft.id);work()}else work()}
     OutlinedTextField(draft.name,{draft=draft.copy(name=it.take(40))},label={Text(localized("Group name"))},modifier=Modifier.fillMaxWidth())
-    var blockTab by remember{mutableStateOf("Apps")}
-    var newEntry by remember{mutableStateOf("")}
     ChoiceRow("Blocklist",blockTab,listOf("Apps","Sites","Keywords")){blockTab=it}
     if(blockTab=="Apps")Column(Modifier.heightIn(max=220.dp).verticalScroll(rememberScrollState())){apps.filter{data.policies[it.packageName]?.hidden!=true}.distinctBy{it.packageName}.forEach{app->
         Row(Modifier.fillMaxWidth().clickable{draft=draft.copy(packages=if(app.packageName in draft.packages)draft.packages-app.packageName else draft.packages+app.packageName)},verticalAlignment=Alignment.CenterVertically){Checkbox(app.packageName in draft.packages,null);Text(app.label)}}}
     else {
-        OutlinedTextField(newEntry,{newEntry=it.take(512)},label={Text(if(blockTab=="Sites")"Website domain" else "URL keyword")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        TextButton(enabled=(if(blockTab=="Sites")draft.websites.size else draft.keywords.size)<200,onClick={val value=if(blockTab=="Sites")FocusWindows.host(newEntry)else newEntry.trim().takeIf{it.isNotEmpty()};if(value!=null){draft=if(blockTab=="Sites")draft.copy(websites=draft.websites+value)else draft.copy(keywords=draft.keywords+value);newEntry=""}}){Text("Add")}
+        val sitesTab=blockTab=="Sites"
+        OutlinedTextField(if(sitesTab)pendingSite else pendingKeyword,{
+            if(sitesTab)pendingSite=it.take(512)else pendingKeyword=it.take(512)
+            validationError=null
+        },label={Text(if(sitesTab)"Website or URL path" else "URL keyword")},singleLine=true,modifier=Modifier.fillMaxWidth())
+        TextButton(enabled=!busy,onClick={
+            if((if(sitesTab)pendingSite else pendingKeyword).isEmpty())validationError=if(sitesTab)"Enter a website or URL path."else "Enter a URL keyword."
+            else{
+                val next=if(sitesTab)withPendingEntries(keyword="")else withPendingEntries(site="")
+                if(next!=null){draft=next;if(sitesTab)pendingSite=""else pendingKeyword="";validationError=null}
+            }
+        }){Text("Add")}
+        validationError?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
         (if(blockTab=="Sites")draft.websites else draft.keywords).forEach{entry->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(entry,Modifier.weight(1f));TextButton(onClick={draft=if(blockTab=="Sites")draft.copy(websites=draft.websites-entry)else draft.copy(keywords=draft.keywords-entry)}){Text("Remove")}}}
-        Text("Sites match domains and subdomains. Keywords match the URL exposed by a supported browser, not encrypted page content.",style=MaterialTheme.typography.bodySmall)
+        Text("A domain blocks that website and its subdomains. A URL path blocks only that path and its children. For example, youtube.com/shorts blocks /shorts videos while ordinary /watch pages remain available. URL keywords match anywhere in the exposed URL, including its query; page content is not inspected.",style=MaterialTheme.typography.bodySmall)
+        Text("Save also adds pending entries from both Sites and Keywords.",style=MaterialTheme.typography.bodySmall)
+    }
+    val websiteEditor=blockTab!="Apps"||FocusWebsiteRules.hasWebTargets(draft)||pendingSite.isNotEmpty()||pendingKeyword.isNotEmpty()
+    if(websiteEditor){
         SectionLabel("Browsers with address adapters")
+        Text("Select at least one browser for website and URL keyword rules, including groups that also contain apps.",style=MaterialTheme.typography.bodySmall)
         Text("Best-effort only. These adapters are not a guarantee for every browser version or private mode. An unreadable address produces a warning; encrypted page content is never inspected.",style=MaterialTheme.typography.bodySmall)
         if(apps.none{it.packageName in BrowserAdapters.ids})Text("No browser with an address adapter is installed.",style=MaterialTheme.typography.bodySmall)
-        apps.distinctBy{it.packageName}.filter{it.packageName in BrowserAdapters.ids}.forEach{app->ToggleRow(app.label,app.packageName in draft.browsers){yes->draft=draft.copy(browsers=if(yes)draft.browsers+app.packageName else draft.browsers-app.packageName)}}
+        apps.distinctBy{it.packageName}.filter{it.packageName in BrowserAdapters.ids}.forEach{app->ToggleRow(app.label,app.packageName in draft.browsers){yes->draft=draft.copy(browsers=if(yes)draft.browsers+app.packageName else draft.browsers-app.packageName);validationError=null}}
+        SectionLabel("Website enforcement")
+        ToggleRow("Enforce outside launcher",data.settings.ui.v2.backgroundRules){yes->model.v2Settings{it.copy(backgroundRules=yes)}}
+        FocusEnforcementStatus(data.settings.ui.v2.backgroundRules){intent->
+            ContextSafeOpen(context,intent){validationError="This Android settings page is unavailable."}
+        }
     }
     val advanced=data.settings.ui.experience.advanced
     SectionLabel("Strict Block")
     ToggleRow("Block continuously",draft.blockAlways){draft=draft.copy(blockAlways=it)}
     Text("Blocks this group's apps and sites until disabled or a Break is allowed. Other app and group rules still apply.",style=MaterialTheme.typography.bodySmall)
+    if(websiteEditor&&!draft.blockAlways)Text("For immediate website and URL keyword blocking, enable Block continuously. Current daily allowance: ${if(draft.dailyMinutes>0)"${draft.dailyMinutes} minutes (${draft.limitAction} at the limit)"else "no daily limit"}.",style=MaterialTheme.typography.bodySmall)
     if(original!=null)FocusBreakControls(original,data,model)
     SectionLabel("Pause before opening")
     ToggleRow("Enabled",draft.pause){draft=draft.copy(pause=it)}
@@ -108,7 +174,8 @@ fun FocusGroupEditor(id:String,data:LauncherData,apps:List<LaunchableApp>,model:
     Text("Requires device authentication to edit this group or start a Break. This does not itself block apps.",style=MaterialTheme.typography.bodySmall)
     ToggleRow("Enabled",draft.strict){yes->if(yes&&draft.requireAuthentication)auth("Enable strict group"){draft=draft.copy(strict=true)}else draft=draft.copy(strict=yes)}
     if(advanced)ToggleRow("Require authentication",draft.requireAuthentication){yes->draft=draft.copy(requireAuthentication=yes)}
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){if(original!=null)TextButton(enabled=!busy,onClick={commit(true)}){Text(localized("Delete"))};TextButton(onClick=done){Text(localized("Cancel"))};TextButton(enabled=!busy&&draft.name.isNotBlank()&&(draft.packages.isNotEmpty()||((draft.websites.isNotEmpty()||draft.keywords.isNotEmpty())&&draft.browsers.isNotEmpty()))&&(!draft.schedule||draft.days.isNotEmpty()),onClick={commit()}){Text(localized("Save"))}}
+    validationError?.let{Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){if(original!=null)TextButton(enabled=!busy,onClick={commit(true)}){Text(localized("Delete"))};TextButton(onClick=done){Text(localized("Cancel"))};TextButton(enabled=!busy,onClick={commit()}){Text(localized("Save"))}}
 }
 @Composable
 fun rememberFocusTime():java.time.ZonedDateTime {

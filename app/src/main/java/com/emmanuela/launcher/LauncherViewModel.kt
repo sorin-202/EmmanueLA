@@ -12,6 +12,7 @@ import com.emmanuela.launcher.data.Favorite
 import com.emmanuela.launcher.data.FocusWindows
 import com.emmanuela.launcher.data.FocusCodec
 import com.emmanuela.launcher.data.FocusGroup
+import com.emmanuela.launcher.data.FocusWebsiteRules
 import com.emmanuela.launcher.data.FolderPassword
 import com.emmanuela.launcher.data.FolderPlacement
 import com.emmanuela.launcher.data.LaunchableApp
@@ -386,9 +387,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
     suspend fun saveFocusGroup(group:FocusGroup):Boolean=write {
         require(group.name.isNotBlank()&&group.name.length<=40&&(group.packages.isNotEmpty()||group.websites.isNotEmpty()||group.keywords.isNotEmpty()))
-        FocusCodec.decode(FocusCodec.encode(listOf(group))) // Validate before writing an unreadable configuration.
+        val configurationError=FocusWebsiteRules.configurationError(group,com.emmanuela.launcher.platform.BrowserAdapters.ids.keys)
+        require(configurationError==null){configurationError.orEmpty()}
+        val saved=FocusWebsiteRules.normalized(group)
+        FocusCodec.decode(FocusCodec.encode(listOf(saved))) // Validate before writing an unreadable configuration.
         // Strict edits are authenticated in the UI; never exported authentication tokens.
-        repository.update{state->require(state.focusGroups.none{it.id==group.id&&it.strict&&it.requireAuthentication} || strictAuthorizations.remove(group.id));state.copy(focusGroups=if(state.focusGroups.any{it.id==group.id})state.focusGroups.map{if(it.id==group.id)group else it}else state.focusGroups+group)}
+        repository.update{state->require(state.focusGroups.none{it.id==saved.id&&it.strict&&it.requireAuthentication} || strictAuthorizations.remove(saved.id));state.copy(focusGroups=if(state.focusGroups.any{it.id==saved.id})state.focusGroups.map{if(it.id==saved.id)saved else it}else state.focusGroups+saved)}
     }
     suspend fun deleteFocusGroup(id:String):Boolean=write {repository.update{require(it.focusGroups.none{g->g.id==id&&g.strict&&g.requireAuthentication}||strictAuthorizations.remove(id));it.copy(focusGroups=it.focusGroups.filterNot{g->g.id==id})}}
     private suspend fun mayLaunch(packageName: String, app:LaunchableApp?=null,privateAuthorized:Boolean=false): Boolean {

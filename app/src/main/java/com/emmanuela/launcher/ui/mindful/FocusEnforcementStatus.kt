@@ -29,16 +29,16 @@ fun FocusEnforcementStatus(rulesEnabled:Boolean,open:(Intent)->Unit){
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(status.connected){permission=BackgroundRuleAccess.enabled(context)}
-    Text("Optional Accessibility access detects apps opened through Recents, notifications and other launchers. Supported browser address controls are read locally; URLs and page contents are not saved.",style=MaterialTheme.typography.bodySmall)
+    Text("Website and URL keyword rules require Enforce outside launcher and Android Accessibility, including when you open the browser from EmmanueLA. Accessibility also detects apps opened through Recents, notifications and other launchers. Browser address controls are read locally; URLs and page contents are not saved.",style=MaterialTheme.typography.bodySmall)
     SettingRow("Background rule access",if(permission)"Allowed by Android"else "Permission required"){
         val details=BackgroundRuleAccess.settingsIntent(context)
         open(if(details.resolveActivity(context.packageManager)!=null)details else Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
     Text(when {
-        !rulesEnabled->"Background enforcement is switched off."
-        !permission->"Enable EmmanueLA focus rules in Android Accessibility settings to enforce outside the launcher."
+        !rulesEnabled->"Website and background app enforcement are switched off. App launch checks inside EmmanueLA still apply."
+        !permission->"Website rules are inactive. Enable EmmanueLA focus rules in Android Accessibility settings."
         !status.connected->"Permission is allowed; waiting for Android to connect the service. Re-enable the service if this persists."
-        else->"Background rule service connected. Android restores the enabled service after reboot and unlock; manufacturer battery restrictions can delay it."
+        else->"Background rule service connected. Android controls reconnection after reboot and unlock; manufacturer battery restrictions can delay it."
     },style=MaterialTheme.typography.bodySmall)
     status.browserPackage?.let { pkg ->
         Text("Last browser check: $pkg · ${if(status.addressReadable==true)"address readable"else "address unavailable"}",style=MaterialTheme.typography.bodySmall)
@@ -51,5 +51,5 @@ fun FocusEnforcementStatus(rulesEnabled:Boolean,open:(Intent)->Unit){
             else->status.reason?:"Enforcement failed"
         },style=MaterialTheme.typography.bodySmall)
     }
-    Text("Website rules require a readable HTTP(S) address in Chrome, Brave, Edge, Firefox or Samsung Internet. Private tabs, hidden bars and browser updates can prevent detection. Opera and other browsers have no adapter. Website usage limits count browser usage, because Android does not provide per-site usage totals. System permission, lock-screen and emergency controls remain accessible.",style=MaterialTheme.typography.bodySmall)
+    Text("Website rules require a readable HTTP(S) address in Chrome, Brave, Edge, Firefox or Samsung Internet. Path-specific rules such as youtube.com/shorts and URL path/query keywords need the full address, not just the domain. Private tabs, hidden bars and browser updates can prevent detection. Opera and other browsers have no adapter. Website usage limits count browser usage, because Android does not provide per-site usage totals. System permission, lock-screen and emergency controls remain accessible.",style=MaterialTheme.typography.bodySmall)
 }
