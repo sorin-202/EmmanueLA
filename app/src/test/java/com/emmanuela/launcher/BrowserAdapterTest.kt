@@ -79,6 +79,23 @@ class BrowserAdapterTest {
         val firefox=BrowserAdapters.inspect(browser,browser,listOf(BrowserAdapters.Field(description=" $full. Search or enter address")))
         assertEquals(full,firefox.address)
         assertTrue(FocusWindows.matches(FocusGroup(keywords=setOf("two;shorts")),firefox.address!!))
+        val bracketQuery="https://example.com/search?filters[category]=shorts"
+        listOf(
+            "com.android.chrome" to "Address bar, $bracketQuery",
+            browser to " $bracketQuery. Search or enter address"
+        ).forEach { (owner,description) ->
+            val result=BrowserAdapters.inspect(owner,owner,listOf(BrowserAdapters.Field(text="example.com",description=description)))
+            assertEquals("Array query brackets must not truncate the native address",bracketQuery,result.address)
+            assertTrue(FocusWindows.matches(FocusGroup(keywords=setOf("shorts")),result.address!!))
+        }
+        val wrapped=BrowserAdapters.inspect("com.android.chrome","com.android.chrome",listOf(
+            BrowserAdapters.Field(description="Address bar, [$bracketQuery]")
+        ))
+        assertEquals("Only the matching outer brackets are label wrappers",bracketQuery,wrapped.address)
+        val endingBracket="https://example.com/search?filters[category]=[shorts]"
+        assertEquals(endingBracket,BrowserAdapters.inspect("com.android.chrome","com.android.chrome",listOf(
+            BrowserAdapters.Field(description="Address bar, $endingBracket")
+        )).address)
     }
 
     @Test fun percentEncodedAliasesAreCompatibleAndLiteralPlusIsPreserved(){

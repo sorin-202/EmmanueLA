@@ -120,7 +120,7 @@ object BrowserAdapters {
         if (value.length > 8192) return emptyList()
         webAddress(value)?.let { return listOf(it) }
         val trimmed = value.trim()
-        return trimmed.split(Regex("[\\s\\[\\]<>]+"))
+        return trimmed.split(Regex("[\\s<>]+"))
             .map { token ->
                 // Fenix formats this chrome label as "<URL>. <localized navigation hint>".
                 // The separator period is not part of the navigated path. A plain URL
@@ -129,7 +129,7 @@ object BrowserAdapters {
                     trimmed.startsWith(token) && trimmed.getOrNull(token.length)?.isWhitespace() == true
                 ) token.dropLast(1) else token
                 var address = labelAddress
-                val wrappers = mapOf('(' to ')', '"' to '"', '\'' to '\'')
+                val wrappers = mapOf('(' to ')', '[' to ']', '"' to '"', '\'' to '\'')
                 while (address.length >= 2 && wrappers[address.first()] == address.last()) {
                     address = address.substring(1, address.length - 1)
                 }
