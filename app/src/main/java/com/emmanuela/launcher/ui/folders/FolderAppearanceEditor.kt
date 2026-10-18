@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -27,7 +28,7 @@ import com.emmanuela.launcher.data.FolderAppearance
 import com.emmanuela.launcher.data.FolderImageGrants
 import com.emmanuela.launcher.folderColors
 import com.emmanuela.launcher.ui.components.VectorSymbol
-import com.emmanuela.launcher.ui.settings.SectionLabel
+import com.emmanuela.launcher.ui.components.localized
 import com.emmanuela.launcher.ui.settings.ToggleRow
 import com.emmanuela.launcher.ui.settings.selectionMarker
 import kotlinx.coroutines.CancellationException
@@ -37,7 +38,8 @@ import kotlinx.coroutines.withContext
 
 @Composable
 internal fun FolderAppearanceEditor(folder: AppFolder, enabled: Boolean, fill: Boolean, colorChanged: (Long) -> Unit, solidChanged: (Boolean) -> Unit,
-                                    imageChanged: (String) -> Unit, busyChanged: (Boolean) -> Unit, grantAcquired: (String) -> Unit) {
+                                    imageChanged: (String) -> Unit, busyChanged: (Boolean) -> Unit, grantAcquired: (String) -> Unit,
+                                    coverIconChanged: (Boolean) -> Unit, coverNameChanged: (Boolean) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var red by rememberSaveable(folder.id, folder.color) { mutableStateOf(((folder.color shr 16) and 255).toString()) }
@@ -46,6 +48,7 @@ internal fun FolderAppearanceEditor(folder: AppFolder, enabled: Boolean, fill: B
     val rgb = FolderAppearance.rgb(red, green, blue)
     var failure by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var editingRgb by rememberSaveable(folder.id) { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             loading = true; busyChanged(true); failure = null
@@ -72,16 +75,24 @@ internal fun FolderAppearanceEditor(folder: AppFolder, enabled: Boolean, fill: B
             }
         }
     }
-    SectionLabel("Appearance")
-    Text("Preview", style = MaterialTheme.typography.labelMedium)
-    FolderSurface(folder, fill, Modifier.fillMaxWidth().height(116.dp)) {
+    Text(localized("Preview"), style = MaterialTheme.typography.labelMedium)
+    FolderSurface(folder, fill, Modifier.fillMaxWidth().height(116.dp).testTag("folder-appearance-preview"), cover = true) { coverVisible ->
         Column(Modifier.padding(16.dp)) {
-            VectorSymbol(folder.icon, folderForeground(folder, fill), Modifier.size(24.dp))
-            Text(folder.name.ifBlank { "Folder" }, color = folderForeground(folder, fill), style = MaterialTheme.typography.titleMedium)
+            if (!coverVisible || folder.showCoverIcon) VectorSymbol(folder.icon, folderForeground(folder, fill), Modifier.size(24.dp).testTag("folder-cover-icon:${folder.id}"))
+            if (!coverVisible || folder.showCoverName) Text(folder.name.ifBlank { "Folder" }, color = folderForeground(folder, fill), style = MaterialTheme.typography.titleMedium)
         }
     }
     if (folder.imageUri.isNotEmpty() && folderImage(folder.imageUri) == null && !loading) {
-        Text("Image unavailable or loading. A readable fallback is shown when the document cannot be opened.", style = MaterialTheme.typography.bodySmall)
+        Text(localized("Image unavailable or loading. A readable fallback is shown when the document cannot be opened."), style = MaterialTheme.typography.bodySmall)
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        TextButton(enabled = enabled && !loading, onClick = { picker.launch(arrayOf("image/*")) }) { Text(localized(if (loading) "Opening image…" else "Choose cover photo")) }
+        if (folder.imageUri.isNotEmpty()) TextButton(enabled = enabled && !loading, onClick = { imageChanged("") }) { Text(localized("Remove image")) }
+    }
+    if (folder.imageUri.isNotEmpty()) {
+        ToggleRow("Show folder icon on cover", folder.showCoverIcon, enabled && !loading, coverIconChanged)
+        ToggleRow("Show folder name on cover", folder.showCoverName, enabled && !loading, coverNameChanged)
+        Text(localized("If the photo is unavailable, the name and icon reappear. Images are center cropped; the original document is unchanged."), style = MaterialTheme.typography.bodySmall)
     }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
         folderColors.forEachIndexed { index, value ->
@@ -93,19 +104,19 @@ internal fun FolderAppearanceEditor(folder: AppFolder, enabled: Boolean, fill: B
             }
         }
     }
-    ToggleRow("Solid color background", folder.solidBackground, enabled && !loading, solidChanged)
-    Text("Custom RGB (0–255)", style = MaterialTheme.typography.labelMedium)
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(Triple("R", red, { value: String -> red = value }), Triple("G", green, { value: String -> green = value }), Triple("B", blue, { value: String -> blue = value })).forEach { (label, value, change) ->
-            OutlinedTextField(value, { if (it.length <= 3) change(it) }, label = { Text(label) },
-                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                isError = value.toIntOrNull()?.let { it in 0..255 } != true, enabled = enabled && !loading, modifier = Modifier.weight(1f))
+    if(folder.imageUri.isEmpty())ToggleRow("Solid color background", folder.solidBackground, enabled && !loading, solidChanged)
+    TextButton(enabled = enabled && !loading, onClick = { editingRgb = !editingRgb }) { Text(if(editingRgb)localized("Done") else "RGB · ${localized("Custom")}") }
+    if(editingRgb) {
+        Text("Custom RGB (0–255)", style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(Triple("R", red, { value: String -> red = value }), Triple("G", green, { value: String -> green = value }), Triple("B", blue, { value: String -> blue = value })).forEach { (label, value, change) ->
+                OutlinedTextField(value, { if (it.length <= 3) change(it) }, label = { Text(label) },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = value.toIntOrNull()?.let { it in 0..255 } != true, enabled = enabled && !loading, modifier = Modifier.weight(1f))
+            }
         }
+        if (rgb == null) Text("Enter a whole number from 0 to 255 in each channel.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        TextButton(enabled = enabled && !loading && rgb != null, onClick = { colorChanged(requireNotNull(rgb)); imageChanged("") }) { Text("Apply RGB") }
     }
-    if (rgb == null) Text("Enter a whole number from 0 to 255 in each channel.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-    TextButton(enabled = enabled && !loading && rgb != null, onClick = { colorChanged(requireNotNull(rgb)); imageChanged("") }) { Text("Apply RGB") }
-    TextButton(enabled = enabled && !loading, onClick = { picker.launch(arrayOf("image/*")) }) { Text(if (loading) "Opening image…" else "Choose background image") }
-    if (folder.imageUri.isNotEmpty()) TextButton(enabled = enabled && !loading, onClick = { imageChanged("") }) { Text("Remove image") }
-    Text("Images are center cropped to fit. The original document is unchanged; read access is saved for restarts.", style = MaterialTheme.typography.bodySmall)
     failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 }

@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.emmanuela.launcher.data.*
@@ -44,11 +47,14 @@ fun DenseFolderCanvas(data:LauncherData,modifier:Modifier,open:(String)->Unit,pl
         @Composable fun tile(c:FolderCell,mod:Modifier){
             val f=c.folder;val accent=if(f.color==0L)MaterialTheme.colorScheme.onSurface else Color(f.color)
             val foreground=folderForeground(f,p.ui.folderFill)
-            FolderSurface(f,p.ui.folderFill,mod){
+            FolderSurface(f,p.ui.folderFill,mod.semantics { contentDescription = "${if (f.isProtected) "Locked folder" else "Folder"}: ${f.name}" },cover=true){ coverVisible ->
+            val showIcon = !coverVisible || f.showCoverIcon
+            val showName = !coverVisible || f.showCoverName
             Column(Modifier.padding(6.dp)){
-                VectorSymbol(f.icon,foreground,Modifier.size(p.symbolSize.dp.coerceAtMost(unit)))
-                Text(f.name,color=foreground,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyMedium)
-                Text(if(f.isProtected)"Locked"else "${f.apps.count{data.policies[it.substringBefore('/')]?.hidden!=true}}",color=foreground,style=MaterialTheme.typography.labelSmall)
+                if(showIcon)VectorSymbol(f.icon,foreground,Modifier.size(p.symbolSize.dp.coerceAtMost(unit)).testTag("folder-cover-icon:${f.id}"))
+                if(showName)Text(f.name,color=foreground,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyMedium)
+                if(showName || f.isProtected)Text(if(f.isProtected)"Locked"else "${f.apps.count{data.policies[it.substringBefore('/')]?.hidden!=true}}",color=foreground,style=MaterialTheme.typography.labelSmall,modifier=
+                    if(coverVisible && !f.showCoverName && !f.showCoverIcon)Modifier.background(Color.Black.copy(alpha=.65f),MaterialTheme.shapes.extraSmall).padding(horizontal=4.dp,vertical=2.dp)else Modifier)
             }}
         }
         Box(Modifier.fillMaxSize().verticalScroll(scroll)){

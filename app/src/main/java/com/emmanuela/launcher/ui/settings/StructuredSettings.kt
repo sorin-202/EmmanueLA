@@ -8,11 +8,13 @@ import com.emmanuela.launcher.ContextSafeOpen
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.AppPolicy
 import com.emmanuela.launcher.data.NotificationMode
+import com.emmanuela.launcher.data.HomeModes
 import com.emmanuela.launcher.data.ExperiencePreferences
 import com.emmanuela.launcher.data.Favorite
 import com.emmanuela.launcher.data.LaunchableApp
 import com.emmanuela.launcher.data.LauncherData
 import com.emmanuela.launcher.platform.rememberDeviceAuthentication
+import com.emmanuela.launcher.ui.appearance.PageWallpaperSettings
 import com.emmanuela.launcher.ui.appearance.AlbumDirectoryRow
 import com.emmanuela.launcher.ui.appearance.HexColorRow
 import com.emmanuela.launcher.ui.appearance.WeatherLocationPicker
@@ -47,6 +49,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +60,8 @@ import kotlinx.coroutines.launch
 
 object SettingsRoutes {
     fun parent(page:String)=when {
+        page=="page-wallpaper:apps" -> "app-settings"
+        page=="page-wallpaper:folders" -> "folder-settings"
         page.startsWith("notification-rule:")->"notification-filter"
         page.startsWith("folder-select:") -> "folder-assignments"
         page.startsWith("blocked-detail:") -> "blocked-apps"
@@ -76,7 +83,7 @@ object SettingsRoutes {
 @Composable
 fun ChoiceRow(label:String,value:String,options:List<String>,save:(String)->Unit) {
     var show by remember { mutableStateOf(false) }
-    SettingRow(label,value){show=true}
+    SettingRow(label,localized(value)){show=true}
     if(show)AlertDialog(onDismissRequest={show=false},title={Text(localized(label))},text={
         Column(Modifier.verticalScroll(rememberScrollState())) {options.forEach { option->
             Row(Modifier.fillMaxWidth().selectionMarker(option==value).clickable{save(option);show=false}.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
@@ -88,12 +95,24 @@ fun ChoiceRow(label:String,value:String,options:List<String>,save:(String)->Unit
 @Composable
 fun SettingsHeading(title:String,back:()->Unit,data:LauncherData,model:LauncherViewModel) {
     val advanced=data.settings.ui.experience.advanced
-    Row(Modifier.fillMaxWidth().padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
-        TextButton(onClick=back){Text(localized("←"),fontSize=24.sp)}
-        Text(localized(title).uppercase(),Modifier.weight(1f),fontSize=28.sp,fontWeight=FontWeight.Medium)
-        TextButton(onClick={model.experienceSettings{it.copy(advanced=!advanced)};model.error.value=if(advanced)"Advanced options disabled" else "Advanced options enabled"}) {
-            Text(if(advanced)"◆" else "◇",fontSize=24.sp)
+    val backLabel=localized("Back")
+    val optionsLabel=localized("More options")
+    val optionsState=localized(if(advanced)"Shown"else"Hidden")
+    Column(Modifier.fillMaxWidth().padding(top=4.dp,bottom=12.dp)) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            TextButton(onClick=back,modifier=Modifier.semantics{contentDescription=backLabel},contentPadding=PaddingValues(horizontal=8.dp)){
+                Text("←",fontSize=24.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick={model.experienceSettings{it.copy(advanced=!advanced)}},modifier=Modifier.semantics{
+                contentDescription=optionsLabel
+                stateDescription=optionsState
+            }) {
+                Text(localized("More options"),style=MaterialTheme.typography.labelMedium)
+                Text(if(advanced)" −"else" +")
+            }
         }
+        Text(localized(title).uppercase(),fontSize=28.sp,fontWeight=FontWeight.Medium)
     }
 }
 @Composable
@@ -116,6 +135,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
     val selectedApp=apps.find{it.id==page.substringAfter(':').substringBefore('|')}
     val selectedGroup=data.focusGroups.find{it.id==page.substringAfter(':')}
     val title=when {
+        page.startsWith("page-wallpaper:")->"Wallpaper"
         page.startsWith("widget-style:")->"Widget style"
         page.startsWith("widget:")->widgetName(page.substringAfter(':'))
         page.startsWith("app-detail:")||page.startsWith("blocked-detail:")||page.startsWith("notification-rule:")->selectedApp?.label?:"App"
@@ -132,9 +152,24 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
         key(page) { Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom=24.dp)) {
             when {
                 page=="settings" -> {
-                    SectionLabel("General",true);SettingRow("System","→"){navigate("system")};SettingRow("About","→"){navigate("about")}
-                    SectionLabel("Your space",true)
-                    listOf("Home" to "home-settings","App List" to "app-settings","Folders" to "folder-settings","Appearance" to "appearance","Gestures" to "gestures","Apps" to "apps-hub","Mindful Use" to "mindful","Live the Moment" to "live-moment","Private Space" to "private-space").forEach{(label,target)->SettingRow(label,"→"){navigate(target)}}
+                    Text(localized("Make it yours. Keep what matters."),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    SectionLabel("Your pages")
+                    SettingsDestination("Home",if(e.homeEnabled)"${localized(HomeModes.effective(e))} · ${localized("Widgets & favorites")}"else "Disabled"){navigate("home-settings")}
+                    SettingsDestination("App List",if(u.appListEnabled)"Apps, search & wallpaper"else "Disabled"){navigate("app-settings")}
+                    SettingsDestination("Folders",if(v.foldersEnabled)"Layout, covers & wallpaper"else "Disabled"){navigate("folder-settings")}
+                    SectionLabel("Focus & privacy")
+                    SettingsDestination("Live the Moment","App limits, websites & focused time"){navigate("live-moment")}
+                    SettingRow("Mindful Use","→"){navigate("mindful")}
+                    SettingRow("Private Space","→"){navigate("private-space")}
+                    SettingsSection("Personalize","Appearance & gestures"){
+                        SettingRow("Appearance","→"){navigate("appearance")}
+                        SettingRow("Gestures","→"){navigate("gestures")}
+                    }
+                    SettingsSection("App & system","Apps, notifications, backup & help"){
+                        SettingRow("Apps","→"){navigate("apps-hub")}
+                        SettingRow("System","→"){navigate("system")}
+                        SettingRow("About","→"){navigate("about")}
+                    }
                 }
                 page=="system" -> {
                     SettingRow("Default launcher"){chooseHome()}
@@ -156,7 +191,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     SettingRow("GitHub"){open(Intent(Intent.ACTION_VIEW,Uri.parse(PublicLinks.GITHUB)))}
                     SettingRow("Privacy policy"){navigate("privacy")};SettingRow("Version information","${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"){}
                 }
-                page=="faqs" -> {Text(localized("Swipe up on Home to open Apps. Swipe left to switch Apps and Folders; right returns Home. Long-press an app for its options. Search #tag for tagged apps.\n\n◇ shows advanced controls. Rules apply when opening apps through EmmanueLA; Android settings and other launchers remain separate. Private Space uses your device authentication.\n\nTo uninstall, revoke screen-lock administrator access and select another default launcher first."))}
+                page=="faqs" -> {Text(localized("Swipe up on Home to open Apps. Swipe left to switch Apps and Folders; right returns Home. Long-press an app for its options. Search #tag for tagged apps.\n\nMore options reveals additional controls. Live the Moment can enforce rules outside EmmanueLA when background enforcement and Android Accessibility are enabled. Android controls and emergency screens remain accessible. Private Space uses your device authentication.\n\nTo uninstall, revoke screen-lock administrator access and select another default launcher first."))}
                 page=="more" -> {
                     SettingRow("Export configuration","JSON",export);SettingRow("Restore configuration","JSON",restore)
                     Text(localized("Backups include launcher settings and local rules. Select photos, fonts and permissions again on another device."),style=MaterialTheme.typography.bodySmall)
@@ -164,15 +199,24 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                 }
                 page=="home-settings" -> {
                     ToggleRow("Enable Home",e.homeEnabled){yes->model.experienceSettings{it.copy(homeEnabled=yes)}}
-                    SectionLabel("Layout");SettingRow("Favorites","${data.favorites.size}"){navigate("favorites")}
-                    SettingRow("Favorite count",p.favoriteCount.toString()){choice("count")};SettingRow("Alignment",p.alignment){choice("alignment")}
-                    SliderRow("Spacing",e.homeSpacing.toFloat(),0f..32f){n->model.experienceSettings{it.copy(homeSpacing=n.toInt())}}
-                    SettingRow("Text style"){navigate("home-text-style")}
-                    SectionLabel("Widgets",true);SubSettingRow("Manage widgets"){navigate("widgets")};SubSettingRow("Arrange widgets"){navigate("widget-layout")}
-                    SectionLabel("Bottom controls");SettingRow("Left shortcut",actionName(u.leftShortcut,apps)){gesture("Bottom left")};SettingRow("Right shortcut",actionName(u.rightShortcut,apps)){gesture("Bottom right")}
-                    SettingRow("Style & size"){navigate("bottom-controls")}
-                    SectionLabel("System");ToggleRow("Show status bar",p.notificationBar){yes->model.settings{it.copy(notificationBar=yes)}}
-                    if(advanced){ToggleRow("Edge to edge",e.edgeToEdge){yes->model.experienceSettings{it.copy(edgeToEdge=yes)}};SettingRow("Home alphabet"){navigate("home-alphabet")}}
+                    HomeModeSelector(mode=HomeModes.effective(e),onModeChange={mode->model.experienceSettings{HomeModes.select(it,mode)}})
+                    SectionLabel("Your Home")
+                    SettingRow("Favorites","${data.favorites.size}"){navigate("favorites")}
+                    SettingRow("Wallpaper",if(p.wallpapers.isEmpty())"None"else "Custom"){navigate("appearance")}
+                    SettingRow("Manage widgets","→"){navigate("widgets")}
+                    SubSettingRow("Arrange widgets"){navigate("widget-layout")}
+                    SettingsSection("Layout & text","Alignment, spacing & typography"){
+                        SettingRow("Favorite count",p.favoriteCount.toString()){choice("count")}
+                        SettingRow("Alignment",p.alignment){choice("alignment")}
+                        SliderRow("Spacing",e.homeSpacing.toFloat(),0f..32f){n->model.experienceSettings{it.copy(homeSpacing=n.toInt())}}
+                        SettingRow("Text style"){navigate("home-text-style")}
+                        if(HomeModes.effective(e)==HomeModes.ALPHABET)SettingRow("Home alphabet"){navigate("home-alphabet")}
+                    }
+                    SettingRow("Bottom controls","→"){navigate("bottom-controls")}
+                    if(advanced)SettingsSection("System appearance","Status bar & screen edges"){
+                        ToggleRow("Show status bar",p.notificationBar){yes->model.settings{it.copy(notificationBar=yes)}}
+                        ToggleRow("Edge to edge",e.edgeToEdge){yes->model.experienceSettings{it.copy(edgeToEdge=yes)}}
+                    }
                 }
                 page=="home-text-style" -> {
                     ToggleRow("Use custom Home text style",e.homeStyleOverride){yes->model.experienceSettings{it.copy(homeStyleOverride=yes)}}
@@ -209,44 +253,63 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     }
                 }
                 page=="bottom-controls" -> {
-                    if(advanced)ToggleRow("Enabled",u.bottomShortcuts){yes->model.uiSettings{it.copy(bottomShortcuts=yes)}}
-                    SettingRow("Left",actionName(u.leftShortcut,apps)){gesture("Bottom left")};SettingRow("Right",actionName(u.rightShortcut,apps)){gesture("Bottom right")}
+                    ToggleRow("Enabled",u.bottomShortcuts){yes->model.uiSettings{it.copy(bottomShortcuts=yes)}}
+                    SettingRow("Left",actionName(u.leftShortcut,apps)){gesture("Bottom left")}
+                    SettingRow("Right",actionName(u.rightShortcut,apps)){gesture("Bottom right")}
                     ChoiceRow("Style",v.shortcutMode,listOf("Text","Icon")){value->model.v2Settings{it.copy(shortcutMode=value)}}
                     if(v.shortcutMode=="Icon") {VectorChoice("Left icon",v.leftVector){value->model.v2Settings{it.copy(leftVector=value)}};VectorChoice("Right icon",v.rightVector){value->model.v2Settings{it.copy(rightVector=value)}}}
                     ChoiceRow("Size",e.bottomSize,listOf("Small","Medium","Large")){value->
                         model.uiSettings{it.copy(bottomBarHeight=when(value){"Small"->44f;"Large"->80f;else->56f},bottomBarTextScale=when(value){"Small"->.8f;"Large"->1.3f;else->1f},experience=it.experience.copy(bottomSize=value))}}
-                    SliderRow("Position from bottom",u.bottomBarOffset,0f..120f){n->model.uiSettings{it.copy(bottomBarOffset=n)}}
                     BottomControlsPreview(data,apps)
-                    SliderRow("Width",u.bottomBarWidth,.5f..1f){n->model.uiSettings{it.copy(bottomBarWidth=n)}}
-                    SliderRow("Height",u.bottomBarHeight,40f..120f){n->model.uiSettings{it.copy(bottomBarHeight=n)}}
-                    SliderRow("Padding",u.bottomBarPadding,0f..40f){n->model.uiSettings{it.copy(bottomBarPadding=n)}}
-                    SliderRow("Text size",u.bottomBarTextScale,.7f..1.8f){n->model.uiSettings{it.copy(bottomBarTextScale=n)}}
-                    ChoiceRow("Text weight",if(u.bottomBarWeight in listOf("Normal","Light"))"Regular" else u.bottomBarWeight,listOf("Regular","Medium","Bold")){value->model.uiSettings{it.copy(bottomBarWeight=if(value=="Regular")"Normal" else value)}}
+                    SettingsSection("Fine tuning","Position, dimensions & text"){
+                        SliderRow("Position from bottom",u.bottomBarOffset,0f..120f){n->model.uiSettings{it.copy(bottomBarOffset=n)}}
+                        SliderRow("Width",u.bottomBarWidth,.5f..1f){n->model.uiSettings{it.copy(bottomBarWidth=n)}}
+                        SliderRow("Height",u.bottomBarHeight,40f..120f){n->model.uiSettings{it.copy(bottomBarHeight=n)}}
+                        SliderRow("Padding",u.bottomBarPadding,0f..40f){n->model.uiSettings{it.copy(bottomBarPadding=n)}}
+                        SliderRow("Text size",u.bottomBarTextScale,.7f..1.8f){n->model.uiSettings{it.copy(bottomBarTextScale=n)}}
+                        ChoiceRow("Text weight",if(u.bottomBarWeight in listOf("Normal","Light"))"Regular" else u.bottomBarWeight,listOf("Regular","Medium","Bold")){value->model.uiSettings{it.copy(bottomBarWeight=if(value=="Regular")"Normal" else value)}}
+                    }
                 }
                 page=="app-settings" -> {
-                    SectionLabel("Layout");ToggleRow("Tree Branch folders",v.treeBranch){yes->model.v2Settings{it.copy(treeBranch=yes)}};ToggleRow("Enable App list",u.appListEnabled){yes->model.uiSettings{it.copy(appListEnabled=yes)}}
-                    ChoiceRow("Alignment",e.appAlignment,listOf("Left","Center","Right")){value->model.experienceSettings{it.copy(appAlignment=value)}}
-                    ToggleRow("Show app icons",e.appIcons){yes->model.experienceSettings{it.copy(appIcons=yes)}}
-                    SliderRow("Spacing",e.appSpacing.toFloat(),0f..32f){n->model.experienceSettings{it.copy(appSpacing=n.toInt())}}
-                    if(advanced)SliderRow("Text size",e.appTextScale,.7f..1.5f){n->model.experienceSettings{it.copy(appTextScale=n)}}
-                    SectionLabel("Search");ToggleRow("Search bar",v.searchEnabled){yes->model.v2Settings{it.copy(searchEnabled=yes)}}
-                    SettingRow("Position",u.searchPosition){choice("search-position")}
-                    SearchStylePicker(u.searchStyle){value->model.uiSettings{it.copy(searchStyle=value)}}
-                    ToggleRow("Auto keyboard",p.autoKeyboard){yes->model.settings{it.copy(autoKeyboard=yes)}}
-                    ToggleRow("Auto-launch single result",e.autoLaunch){yes->model.experienceSettings{it.copy(autoLaunch=yes)}}
-                    if(advanced){SliderRow("Auto-launch delay (ms)",e.autoLaunchDelay.toFloat(),0f..1500f){n->model.experienceSettings{it.copy(autoLaunchDelay=n.toInt())}}
-                        ToggleRow("Search aliases",e.searchAliases){yes->model.experienceSettings{it.copy(searchAliases=yes)}}
-                        ToggleRow("Search tags",u.tagSearch){yes->model.uiSettings{it.copy(tagSearch=yes)}}
-                        ToggleRow("Tag suggestions",u.tagSuggestions){yes->model.uiSettings{it.copy(tagSuggestions=yes)}}
-                        ToggleRow("Search package names",e.searchPackages){yes->model.experienceSettings{it.copy(searchPackages=yes)}}
-                        SettingRow("Cursor style"){navigate("cursor")}}
-                    SettingRow("Contact search (@)"){navigate("contacts-search")}
-                    SettingRow("Search actions"){navigate("search-actions")}
-                    SectionLabel("Alphabet");ToggleRow("Alphabet rail",u.alphabet){yes->model.uiSettings{it.copy(alphabet=yes)}}
-                    ChoiceRow("Animation",u.alphabetAnimation,listOf("None","Wave","Bubble","Fade")){value->model.uiSettings{it.copy(alphabetAnimation=value)}}
-                    if(u.alphabetAnimation=="Wave")SliderRow("Wave movement",e.appWaveStrength,16f..80f){n->model.experienceSettings{it.copy(appWaveStrength=n)}}
-                    ToggleRow("Haptics",e.alphabetHaptics){yes->model.experienceSettings{it.copy(alphabetHaptics=yes)}};com.emmanuela.launcher.platform.HapticTestRow()
+                    ToggleRow("Enable App list",u.appListEnabled){yes->model.uiSettings{it.copy(appListEnabled=yes)}}
+                    SettingRow("Wallpaper","→"){navigate("page-wallpaper:apps")}
+                    SettingsSection("Layout","Icons, alignment & spacing",initiallyExpanded=true){
+                        ToggleRow("Show app icons",e.appIcons){yes->model.experienceSettings{it.copy(appIcons=yes)}}
+                        ChoiceRow("Alignment",e.appAlignment,listOf("Left","Center","Right")){value->model.experienceSettings{it.copy(appAlignment=value)}}
+                        SliderRow("Spacing",e.appSpacing.toFloat(),0f..32f){n->model.experienceSettings{it.copy(appSpacing=n.toInt())}}
+                        if(advanced){
+                            ToggleRow("Tree Branch folders",v.treeBranch){yes->model.v2Settings{it.copy(treeBranch=yes)}}
+                            SliderRow("Text size",e.appTextScale,.7f..1.5f){n->model.experienceSettings{it.copy(appTextScale=n)}}
+                        }
+                    }
+                    SettingsSection("Search",if(v.searchEnabled)"${localized("Enabled")} · ${localized(u.searchPosition)}"else "Search bar hidden"){
+                        ToggleRow("Search bar",v.searchEnabled){yes->model.v2Settings{it.copy(searchEnabled=yes)}}
+                        SettingRow("Position",u.searchPosition){choice("search-position")}
+                        SearchStylePicker(u.searchStyle){value->model.uiSettings{it.copy(searchStyle=value)}}
+                        ToggleRow("Auto keyboard",p.autoKeyboard){yes->model.settings{it.copy(autoKeyboard=yes)}}
+                        ToggleRow("Auto-launch single result",e.autoLaunch){yes->model.experienceSettings{it.copy(autoLaunch=yes)}}
+                        if(advanced){
+                            if(e.autoLaunch)SliderRow("Auto-launch delay (ms)",e.autoLaunchDelay.toFloat(),0f..1500f){n->model.experienceSettings{it.copy(autoLaunchDelay=n.toInt())}}
+                            ToggleRow("Search aliases",e.searchAliases){yes->model.experienceSettings{it.copy(searchAliases=yes)}}
+                            ToggleRow("Search tags",u.tagSearch){yes->model.uiSettings{it.copy(tagSearch=yes)}}
+                            ToggleRow("Tag suggestions",u.tagSuggestions){yes->model.uiSettings{it.copy(tagSuggestions=yes)}}
+                            ToggleRow("Search package names",e.searchPackages){yes->model.experienceSettings{it.copy(searchPackages=yes)}}
+                            SettingRow("Cursor style"){navigate("cursor")}
+                        }
+                        SettingRow("Contact search (@)"){navigate("contacts-search")}
+                        SettingRow("Search actions"){navigate("search-actions")}
+                    }
+                    SettingsSection("Alphabet",if(u.alphabet)u.alphabetAnimation else "Hidden"){
+                        ToggleRow("Alphabet rail",u.alphabet){yes->model.uiSettings{it.copy(alphabet=yes)}}
+                        if(u.alphabet){
+                            ChoiceRow("Animation",u.alphabetAnimation,listOf("None","Wave","Bubble","Fade")){value->model.uiSettings{it.copy(alphabetAnimation=value)}}
+                            if(u.alphabetAnimation=="Wave")SliderRow("Wave movement",e.appWaveStrength,16f..80f){n->model.experienceSettings{it.copy(appWaveStrength=n)}}
+                            ToggleRow("Haptics",e.alphabetHaptics){yes->model.experienceSettings{it.copy(alphabetHaptics=yes)}}
+                            if(advanced)com.emmanuela.launcher.platform.HapticTestRow()
+                        }
+                    }
                 }
+                page.startsWith("page-wallpaper:") -> PageWallpaperSettings(page.substringAfter(':'),data,model)
                 page=="search-actions" -> {
                     var choosing by remember { mutableStateOf(false) }
                     Text("Choose up to 16 actions to find by name in App List search. Actions always require a tap.")
@@ -266,8 +329,8 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     CursorSearchField(query,{query=it},p,Modifier.fillMaxWidth(),"Preview cursor")
                 }
                 page=="home-alphabet" -> {
-                    ToggleRow("Show alphabet",e.homeAlphabet){yes->model.experienceSettings{it.copy(homeAlphabet=yes)}}
-                    Text(localized("Home alphabet and App List can be enabled independently."),style=MaterialTheme.typography.bodySmall)
+                    Text(localized("Choose Alphabet in Home mode to show this list. App List remains independent."),style=MaterialTheme.typography.bodySmall)
+                    SettingRow("Home mode",HomeModes.effective(e)){navigate("home-settings")}
                     ChoiceRow("Position",e.homeAlphabetPosition,listOf("Left","Right")){value->model.experienceSettings{it.copy(homeAlphabetPosition=value)}}
                     ChoiceRow("Style",e.homeAlphabetStyle,listOf("Minimal","Compact")){value->model.experienceSettings{it.copy(homeAlphabetStyle=value)}}
                     if(e.homeAlphabetAnimation=="Wave")SliderRow("Wave movement",e.homeWaveStrength,16f..80f){n->model.experienceSettings{it.copy(homeWaveStrength=n)}}
@@ -275,12 +338,16 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     Text(localized("♡ shows favorites. # shows tagged apps. Letters filter apps inside the Home app area."),style=MaterialTheme.typography.bodyMedium)
                 }
                 page=="folder-settings" -> {
-                    ChoiceRow("Folder width (cells)",v.folderWidthUnits.toString(),(1..4).map{it.toString()}){value->model.v2Settings{it.copy(folderWidthUnits=value.toInt())}}
-                    ChoiceRow("Folder height (cells)",v.folderHeightUnits.toString(),(1..4).map{it.toString()}){value->model.v2Settings{it.copy(folderHeightUnits=value.toInt())}}
-                    SectionLabel("Layout");ToggleRow("Enable Folders",v.foldersEnabled){yes->model.v2Settings{it.copy(foldersEnabled=yes)}}
+                    ToggleRow("Enable Folders",v.foldersEnabled){yes->model.v2Settings{it.copy(foldersEnabled=yes)}}
+                    SettingRow("Wallpaper","→"){navigate("page-wallpaper:folders")}
+                    SectionLabel("Layout")
                     FolderLayoutPicker(if(u.folderLayout in listOf("Canvas","Freeform"))"Freeform" else if(u.folderLayout=="List")"List" else "Grid"){value->model.uiSettings{it.copy(folderLayout=if(value=="Grid")"Adaptive" else value)}}
                     ToggleRow("In-folder icons",u.folderAppIcons){yes->model.uiSettings{it.copy(folderAppIcons=yes)}}
                     SliderRow("Spacing",e.folderSpacing.toFloat(),0f..32f){n->model.experienceSettings{it.copy(folderSpacing=n.toInt())}}
+                    SettingsSection("Card size","Width & height on the Folders page"){
+                        ChoiceRow("Folder width (cells)",v.folderWidthUnits.toString(),(1..4).map{it.toString()}){value->model.v2Settings{it.copy(folderWidthUnits=value.toInt())}}
+                        ChoiceRow("Folder height (cells)",v.folderHeightUnits.toString(),(1..4).map{it.toString()}){value->model.v2Settings{it.copy(folderHeightUnits=value.toInt())}}
+                    }
                     if(advanced)ChoiceRow("Sort apps",e.folderSort,listOf("Name","Manual")){value->model.experienceSettings{it.copy(folderSort=value)}}
                     SectionLabel("Appearance");ToggleRow("Background fill",u.folderFill){yes->model.uiSettings{it.copy(folderFill=yes)}}
                     if(advanced)SliderRow("Label size",e.folderLabelScale,.7f..1.5f){n->model.experienceSettings{it.copy(folderLabelScale=n)}}
@@ -369,30 +436,45 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                         ToggleRow("Show widget",p.showScreenTime){yes->model.settings{it.copy(showScreenTime=yes)}}}
                 }
                 page=="live-moment" -> {
-                    ToggleRow("Enforce outside launcher",v.backgroundRules){yes->model.v2Settings{it.copy(backgroundRules=yes)}}
-                    com.emmanuela.launcher.ui.mindful.FocusEnforcementStatus(v.backgroundRules,::open)
+                    Text(localized("Choose what gets your time."),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Surface(Modifier.fillMaxWidth().padding(top=16.dp,bottom=8.dp),shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha=.55f)){
+                        Column(Modifier.padding(16.dp)){
+                            ToggleRow("Enforce outside launcher",v.backgroundRules){yes->model.v2Settings{it.copy(backgroundRules=yes)}}
+                            com.emmanuela.launcher.ui.mindful.FocusEnforcementStatus(v.backgroundRules,::open)
+                        }
+                    }
                     val focusNow=com.emmanuela.launcher.ui.mindful.rememberFocusTime()
                     val enforcement by com.emmanuela.launcher.platform.EnforcementBridge.status.collectAsStateWithLifecycle()
                     SectionLabel("Groups")
-                    data.focusGroups.forEach{g->Column(Modifier.fillMaxWidth().clickable{navigate("group:${g.id}")}.padding(vertical=16.dp)){
-                        Text(g.name,style=MaterialTheme.typography.titleMedium)
-                        Text(apps.filter{it.packageName in g.packages}.distinctBy{it.packageName}.joinToString{it.label},style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(when {
-                            com.emmanuela.launcher.data.FocusWindows.strict(g,focusNow)->"Strict Block configured"
-                            com.emmanuela.launcher.data.FocusWindows.onBreak(g,focusNow)->"Break active"
-                            g.dailyMinutes>0->"${g.dailyMinutes} min/day"
-                            else->"No daily limit"
-                        },style=MaterialTheme.typography.bodySmall)
-                        if(g.websites.isNotEmpty())Text("Sites: ${g.websites.joinToString()}",style=MaterialTheme.typography.bodySmall)
-                        if(g.keywords.isNotEmpty())Text("URL keywords: ${g.keywords.joinToString()}",style=MaterialTheme.typography.bodySmall)
-                        val webError=remember(g){com.emmanuela.launcher.data.FocusWebsiteRules.configurationError(g,com.emmanuela.launcher.platform.BrowserAdapters.ids.keys)}
-                        if(webError!=null)Text(webError,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-                        else if(com.emmanuela.launcher.data.FocusWebsiteRules.hasWebTargets(g)&&(!v.backgroundRules||!enforcement.connected))
-                            Text("Website rules inactive: enable background enforcement and Accessibility, and wait for the service connection.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-                        Text(if(g.strict&&g.requireAuthentication)"Changes protected by device authentication"else "Changes are not protected",style=MaterialTheme.typography.bodySmall)
-                        HorizontalDivider(Modifier.padding(top=16.dp),color=MaterialTheme.colorScheme.outline.copy(alpha=.15f))
-                    }}
-                    SettingRow("+ Create group"){navigate("group:new")}
+                    if(data.focusGroups.isEmpty())Text(localized("Create a group for apps, websites or URL keywords. Choose continuous blocking, limits or a schedule."),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(bottom=12.dp))
+                    data.focusGroups.forEach{g->
+                        Surface(Modifier.fillMaxWidth().padding(vertical=5.dp),shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha=.55f)){
+                            Column(Modifier.fillMaxWidth().clickable{navigate("group:${g.id}")}.padding(16.dp)){
+                                Row(verticalAlignment=Alignment.CenterVertically){
+                                    Text(g.name,Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
+                                    Text("›",style=MaterialTheme.typography.titleLarge)
+                                }
+                                val targets=buildList{
+                                    if(g.packages.isNotEmpty())add("${localized("Apps")}: ${g.packages.size}")
+                                    if(g.websites.isNotEmpty())add("${localized("Sites")}: ${g.websites.size}")
+                                    if(g.keywords.isNotEmpty())add("${localized("Keywords")}: ${g.keywords.size}")
+                                }.joinToString(" · ")
+                                Text(targets,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(localized(when {
+                                    com.emmanuela.launcher.data.FocusWindows.strict(g,focusNow)->"Strict Block configured"
+                                    com.emmanuela.launcher.data.FocusWindows.onBreak(g,focusNow)->"Break active"
+                                    g.dailyMinutes>0->"${g.dailyMinutes} min/day"
+                                    else->"No daily limit"
+                                }),style=MaterialTheme.typography.bodyMedium,modifier=Modifier.padding(top=8.dp))
+                                val webError=remember(g){com.emmanuela.launcher.data.FocusWebsiteRules.configurationError(g,com.emmanuela.launcher.platform.BrowserAdapters.ids.keys)}
+                                if(webError!=null)Text(webError,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                else if(com.emmanuela.launcher.data.FocusWebsiteRules.hasWebTargets(g)&&(!v.backgroundRules||!enforcement.connected))
+                                    Text(localized("Website rules inactive: enable background enforcement and Accessibility, and wait for the service connection."),color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                Text(localized(if(g.strict&&g.requireAuthentication)"Changes protected by device authentication"else "Changes are not protected"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=4.dp))
+                            }
+                        }
+                    }
+                    Button(onClick={navigate("group:new")},modifier=Modifier.fillMaxWidth().padding(top=12.dp)){Text(localized("+ Create group"))}
                 }
                 page.startsWith("group:") -> FocusGroupEditor(page.substringAfter(':'),data,apps,model){navigate("live-moment")}
                 page.startsWith("app-detail:") -> {

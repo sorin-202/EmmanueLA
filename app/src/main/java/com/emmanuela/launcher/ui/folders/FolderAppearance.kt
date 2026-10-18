@@ -20,6 +20,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
@@ -106,9 +107,11 @@ internal fun folderImage(uri: String): ImageBitmap? {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    return produceState<ImageBitmap?>(null, uri, resumed) {
-        value = FolderImages.load(context, uri)?.asImageBitmap()
-    }.value
+    return key(uri, resumed) {
+        produceState<ImageBitmap?>(null, uri, resumed) {
+            value = FolderImages.load(context, uri)?.asImageBitmap()
+        }.value
+    }
 }
 
 @Composable
@@ -122,7 +125,8 @@ internal fun folderForeground(folder: AppFolder, fill: Boolean): Color {
 
 /** Uses a center crop at render time; the source document is never rewritten. */
 @Composable
-internal fun FolderSurface(folder: AppFolder, fill: Boolean, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+internal fun FolderSurface(folder: AppFolder, fill: Boolean, modifier: Modifier = Modifier, cover: Boolean = false,
+                           content: @Composable BoxScope.(coverVisible: Boolean) -> Unit) {
     val image = folderImage(folder.imageUri)
     val accent = if (folder.color == 0L) MaterialTheme.colorScheme.onSurface else Color(folder.color)
     val hasImage = folder.imageUri.isNotEmpty()
@@ -131,8 +135,11 @@ internal fun FolderSurface(folder: AppFolder, fill: Boolean, modifier: Modifier 
     )) {
         if (image != null) {
             Image(image, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .5f)))
+            // The opened folder retains its readable backdrop; a picture-only tile shows the original photo.
+            if (!cover || folder.showCoverIcon || folder.showCoverName) {
+                Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .5f)))
+            }
         }
-        content()
+        content(image != null)
     }
 }

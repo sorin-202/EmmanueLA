@@ -84,7 +84,14 @@ jobs:
           target: default
           profile: pixel_2
           disable-animations: false
-          script: chmod +x gradlew && ./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2
+          script: |
+            ui_test_status=0
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2 || ui_test_status=$?
+            mkdir -p app/build/reports/androidTests
+            if ! adb pull /sdcard/Android/data/com.emmanuela.launcher/files/ux-screenshots app/build/reports/androidTests/; then
+              if [ "$ui_test_status" -eq 0 ]; then ui_test_status=1; fi
+            fi
+            exit "$ui_test_status"
 
       - name: Browser fixture coverage
         if: always()

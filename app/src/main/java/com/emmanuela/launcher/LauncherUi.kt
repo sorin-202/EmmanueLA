@@ -20,6 +20,7 @@ import com.emmanuela.launcher.platform.SystemDestinations
 import com.emmanuela.launcher.ui.home.BlankScreen
 import com.emmanuela.launcher.platform.rememberDeviceAuthentication
 import com.emmanuela.launcher.ui.appearance.EmmanuelaTheme
+import com.emmanuela.launcher.ui.appearance.PageWallpaperSurface
 import com.emmanuela.launcher.ui.appearance.WallpaperEditor
 import com.emmanuela.launcher.ui.apps.AllApps
 import com.emmanuela.launcher.ui.apps.AppContextMenu
@@ -243,12 +244,12 @@ fun LauncherApp(model: LauncherViewModel, homeEpoch: Int, now: Long, battery: In
                             LauncherSurface.BLANK -> BlankScreen(data,model){overlay="settings"}
                             LauncherSurface.HOME -> HomeScreen(data, visibleApps, model, now, battery, ::action,
                                 { overlay = "settings" }, { overlay = "favorites" }, ::editApp, {app -> secureLaunch(app)})
-                            LauncherSurface.APPS -> AllApps(drawerIndex, loading, data.settings,
+                            LauncherSurface.APPS -> PageWallpaperSurface("apps", data.settings) { AllApps(drawerIndex, loading, data.settings,
                                 settled && overlay.isEmpty() && editor == null && appEditor == null && appMenu == null && policyPackages.isEmpty() && folderUnlock == null && quickAddApp == null,
                                 model, {app -> secureLaunch(app)}, model::rememberTags, { navigate(LauncherSurface.HOME, -1) },
-                                { navigate(LauncherSurface.FOLDERS) }, { overlay = "settings" }, ::editApp, { overlay="hidden" }, { openFolder(it) }, ::action)
-                            LauncherSurface.FOLDERS -> FoldersScreen(data, { navigate(LauncherSurface.HOME, -1) },
-                                { navigate(LauncherSurface.APPS) }, { openFolder(it) }, { editor = "new" }, model::placeFolder,{overlay="settings"},model::placeDenseFolder)
+                                { navigate(LauncherSurface.FOLDERS) }, { overlay = "settings" }, ::editApp, { overlay="hidden" }, { openFolder(it) }, ::action) }
+                            LauncherSurface.FOLDERS -> PageWallpaperSurface("folders", data.settings) { FoldersScreen(data, { navigate(LauncherSurface.HOME, -1) },
+                                { navigate(LauncherSurface.APPS) }, { openFolder(it) }, { editor = "new" }, model::placeFolder,{overlay="settings"},model::placeDenseFolder) }
                         }
                     }
                     val activeFolder=data.folders.find { it.id == overlay.removePrefix("folder:") }

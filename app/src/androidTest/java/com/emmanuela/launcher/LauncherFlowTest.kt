@@ -134,7 +134,7 @@ class LauncherFlowTest {
             observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{placements.add(it.settings.ui.v2.widgetPositions["clock"]);observed.value=it}}
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                click("Launcher settings");click("Home",match={it.text?.toString()=="Home"});click("Arrange widgets",scroll=true)
+                click("Launcher settings");click("Home",match={it.text?.toString()?.lineSequence()?.any{line->line=="Home"}==true});click("Arrange widgets",scroll=true)
                 fun clock()=center(find("Clock",match={it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}"))==true}))
                 clock()
                 assertEquals("Only the arrangement clock is exposed",1,nodes(instrumentation.uiAutomation.rootInActiveWindow).count{it.isVisibleToUser&&it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}"))==true})
@@ -199,6 +199,7 @@ class LauncherFlowTest {
                 SystemClock.sleep(500)
                 click("Action: Settings")
                 click("App list",scroll=true)
+                click("Search",scroll=true)
                 click("Search actions",scroll=true)
                 find("Choose up to 16 actions to find by name in App List search. Actions always require a tap.")
                 click("Settings")
@@ -320,7 +321,7 @@ class LauncherFlowTest {
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity{uiModel=androidx.lifecycle.ViewModelProvider(it)[LauncherViewModel::class.java]}
-                click("Launcher settings");click("Apps",scroll=true);click("Notifications");click("Settings",scroll=true)
+                click("Launcher settings");click("App & system",scroll=true);click("Apps",scroll=true);click("Notifications");click("Settings",scroll=true)
                 click("Delivery");click("DISMISS");click("Apply rule",scroll=true);click("Schedule")
                 val keywords=find("Keywords",scroll=true,match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(keywords.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"urgent\nmeeting")}))

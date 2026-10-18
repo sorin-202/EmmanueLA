@@ -22,7 +22,8 @@ class FolderAppearancePersistenceTest {
         val original = repository.data.first()
         val folder = AppFolder("appearance-test", "Appearance", "folder", listOf("test/.B", "test/.A"),
             color = 0xff123456L, imageUri = "content://${context.packageName}.files/shared/folder-test.png",
-            gridColumns = 5, gridRows = 4, widthUnits = 5, heightUnits = 5, manualOrder = true)
+            gridColumns = 5, gridRows = 4, widthUnits = 5, heightUnits = 5, manualOrder = true,
+            showCoverIcon = false, showCoverName = false)
         try {
             repository.update { it.copy(folders = it.folders.filterNot { f -> f.id == folder.id } + folder) }
             assertEquals(folder, ConfigurationRepository(context).data.first().folders.first { it.id == folder.id })

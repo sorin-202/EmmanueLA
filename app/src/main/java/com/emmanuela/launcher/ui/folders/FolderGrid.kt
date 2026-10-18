@@ -23,6 +23,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
@@ -55,15 +58,18 @@ fun EditableFolderGrid(data:LauncherData,modifier:Modifier,open:(String)->Unit,p
     @Composable fun tile(folder:AppFolder,mod:Modifier){
         val accent=if(folder.color==0L)MaterialTheme.colorScheme.onSurface else Color(folder.color)
         val foreground=folderForeground(folder,p.ui.folderFill)
-        FolderSurface(folder,p.ui.folderFill,mod){
+        FolderSurface(folder,p.ui.folderFill,mod.semantics { contentDescription = "${if (folder.isProtected) "Locked folder" else "Folder"}: ${folder.name}" },cover=true){ coverVisible ->
+        val showIcon = !coverVisible || folder.showCoverIcon
+        val showName = !coverVisible || folder.showCoverName
         Column(Modifier.padding(16.dp)){
-            if(p.symbolPlacement=="Top")VectorSymbol(folder.icon,if(p.ui.folderFill||folder.solidBackground||folder.imageUri.isNotEmpty())foreground else accent,Modifier.padding(bottom=12.dp).size(p.symbolSize.dp))
+            if(showIcon && p.symbolPlacement=="Top")VectorSymbol(folder.icon,if(p.ui.folderFill||folder.solidBackground||folder.imageUri.isNotEmpty())foreground else accent,Modifier.padding(bottom=12.dp).size(p.symbolSize.dp).testTag("folder-cover-icon:${folder.id}"))
             Row(verticalAlignment=Alignment.CenterVertically){
-                if(p.symbolPlacement=="Left")VectorSymbol(folder.icon,if(p.ui.folderFill||folder.solidBackground||folder.imageUri.isNotEmpty())foreground else accent,Modifier.padding(end=8.dp).size(p.symbolSize.dp))
-                Text(folder.name,color=foreground,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleMedium.let{it.copy(fontSize=it.fontSize*p.ui.experience.folderLabelScale)})
+                if(showIcon && p.symbolPlacement=="Left")VectorSymbol(folder.icon,if(p.ui.folderFill||folder.solidBackground||folder.imageUri.isNotEmpty())foreground else accent,Modifier.padding(end=8.dp).size(p.symbolSize.dp).testTag("folder-cover-icon:${folder.id}"))
+                if(showName)Text(folder.name,color=foreground,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleMedium.let{it.copy(fontSize=it.fontSize*p.ui.experience.folderLabelScale)})
             }
             val amount=folder.apps.count{data.policies[it.substringBefore('/')]?.hidden!=true}
-            Text(if(folder.isProtected)"Locked folder" else "$amount apps",color=foreground.copy(alpha=.75f),style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=8.dp))
+            if(showName || folder.isProtected)Text(if(folder.isProtected)"Locked folder" else "$amount apps",color=foreground.copy(alpha=.75f),style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(top=8.dp).then(
+                if(coverVisible && !folder.showCoverName && !folder.showCoverIcon)Modifier.background(Color.Black.copy(alpha=.65f),MaterialTheme.shapes.extraSmall).padding(horizontal=6.dp,vertical=3.dp)else Modifier))
         }}
     }
     Box(modifier.onGloballyPositioned{viewport=it.boundsInRoot()}.pointerInput(freeform,snap){
