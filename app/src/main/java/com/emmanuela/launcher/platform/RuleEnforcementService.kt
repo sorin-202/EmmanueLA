@@ -27,7 +27,7 @@ object EnforcementBridge {
     var connected:Boolean
         get()=mutableStatus.value.connected
         set(value){mutableStatus.value=mutableStatus.value.copy(connected=value)}
-    fun browser(pkg:String,result:BrowserAdapters.Result){
+    fun browser(pkg:String,result:BrowserAdapters.Result,requiresUrlDetails:Boolean=false,retainingVerifiedBlock:Boolean=false){
         val issue=when(result.unavailable){
             BrowserAdapters.Unavailable.UNSUPPORTED_BROWSER->"Unsupported browser: website rules have no address adapter."
             BrowserAdapters.Unavailable.FOREIGN_WINDOW->"Browser window unavailable. Website rules cannot be verified."
@@ -35,7 +35,11 @@ object EnforcementBridge {
             BrowserAdapters.Unavailable.EDITING_ADDRESS->"Address is being edited. Waiting for navigation before checking website rules."
             BrowserAdapters.Unavailable.TREE_ACCESS_FAILED->"Android accessibility tree query failed. Website rule enforcement cannot be verified."
             BrowserAdapters.Unavailable.UNREADABLE_ADDRESS->"Address control found, but no web address is readable. Website rules cannot be verified."
-            null->null
+            BrowserAdapters.Unavailable.AMBIGUOUS_ADDRESS->"Browser address controls disagree. Website rules cannot be verified on this screen."
+            null->if(requiresUrlDetails&&result.hostOnly)
+                "Only the website domain is visible. Path-specific website rules and URL path/query keywords cannot be verified until the browser exposes them."+
+                    if(retainingVerifiedBlock)" The previously verified block remains displayed until navigation can be verified."else ""
+                else null
         }
         mutableStatus.value=mutableStatus.value.copy(browserPackage=pkg,addressReadable=result.address!=null,issue=issue)
     }
@@ -109,6 +113,8 @@ class RuleEnforcementService:AccessibilityService(){
                 val enabling=!state.settings.ui.v2.backgroundRules&&next.settings.ui.v2.backgroundRules
                 if(changed){
                     generation++;check?.cancel();admission?.cancel();timer?.cancel();removeOverlay()
+                    // Do not drop a replacement read behind an old-generation IO job.
+                    browserRead?.cancel();browserRead=null;browserReadPending=false
                     admitted=false;handoffPending=false;sessionBase.clear();sessionAnchors.clear();warnedRules.clear()
                 }
                 state=next
@@ -123,12 +129,24 @@ class RuleEnforcementService:AccessibilityService(){
         pkg in it.browsers&&(it.websites.isNotEmpty()||it.keywords.isNotEmpty())
     }
 
+    private fun hasForegroundRules(pkg:String)=hasWebsiteRules(pkg)||
+        state.focusGroups.any { pkg in it.packages }||
+        state.policies[pkg]?.let { it!=AppPolicy() }==true||
+        state.folders.any { it.isProtected&&it.apps.any { id->id.substringBefore('/')==pkg } }
+
     override fun onAccessibilityEvent(event:AccessibilityEvent?){
         if(event==null||!state.settings.ui.v2.backgroundRules)return
         when(event.eventType){
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,AccessibilityEvent.TYPE_WINDOWS_CHANGED -> refreshForeground()
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_FOCUSED -> if(event.packageName?.toString()==foreground&&hasWebsiteRules(foreground))readBrowserAddress(foreground)
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                val owner=event.packageName?.toString()?:return
+                if(owner==foreground&&hasWebsiteRules(owner))readBrowserAddress(owner)
+                // A transient system window or unavailable root can clear foreground
+                // before an app/browser becomes readable again. Verify the actual
+                // application window instead of trusting the callback's owner.
+                else if(owner!=foreground&&hasForegroundRules(owner))refreshForeground()
+            }
         }
     }
 
@@ -216,7 +234,13 @@ class RuleEnforcementService:AccessibilityService(){
                 // until a real browser read or foreground reconciliation completes.
                 if(result.unavailable!=null&&result.unavailable!=BrowserAdapters.Unavailable.EDITING_ADDRESS&&
                     overlay!=null&&currentUrl.isNotEmpty())continue
-                EnforcementBridge.browser(pkg,result)
+                val requiresDetails=state.focusGroups.any { pkg in it.browsers&&FocusWebsiteRules.needsUrlDetails(it) }
+                fun hostKey(address:String)=FocusWindows.host(address)?.removePrefix("www.")
+                val retainingBlock=requiresDetails&&result.hostOnly&&overlay!=null&&currentUrl.isNotEmpty()&&
+                    !BrowserAdapters.Result(address=currentUrl).hostOnly&&hostKey(result.address.orEmpty())==hostKey(currentUrl)
+                EnforcementBridge.browser(pkg,result,requiresDetails,retainingBlock)
+                // An elided address is not evidence that a verified blocked page changed.
+                if(retainingBlock)continue
                 if(result.unavailable!=null&&result.unavailable!=BrowserAdapters.Unavailable.EDITING_ADDRESS&&!warnedAddress){
                     warnedAddress=true
                     android.widget.Toast.makeText(this@RuleEnforcementService,EnforcementBridge.status.value.issue,android.widget.Toast.LENGTH_LONG).show()
