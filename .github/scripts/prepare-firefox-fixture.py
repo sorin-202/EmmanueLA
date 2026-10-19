@@ -27,6 +27,29 @@ LABELS = (
     "Continue browsing", "Done", "Continue",
 )
 PAGE_CLASSES = {"android.webkit.WebView", "org.mozilla.geckoview.GeckoView", "org.mozilla.gecko.GeckoView"}
+NULL_UI_ROOT = "ERROR: null root node returned by UiTestAutomationBridge."
+
+
+def ui_snapshot_available(stdout, stderr):
+    """ADB can exit successfully while UIAutomator reports a transient null root."""
+    errors = [line.strip() for output in (stdout, stderr) for line in output.splitlines()
+              if "ERROR:" in line]
+    if errors == [NULL_UI_ROOT]:
+        return False
+    if errors:
+        raise RuntimeError(f"UIAutomator could not obtain current UI: {'; '.join(errors)}")
+    return True
+
+
+def parse_ui_hierarchy(xml):
+    """Reject a failed `adb exec-out cat` even when ADB returns status zero."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as error:
+        raise RuntimeError(f"UIAutomator did not produce a valid current UI hierarchy: {error}") from error
+    if root.tag != "hierarchy":
+        raise RuntimeError(f"UIAutomator returned an unexpected root: {root.tag!r}")
+    return root
 
 
 def bounds(node):
@@ -92,11 +115,13 @@ def main():
         remote = "/sdcard/emmanuela-firefox-preflight.xml"
         command("shell", "rm", "-f", remote)
         output = command("shell", "uiautomator", "dump", remote)
-        if "ERROR:" in output:
-            raise RuntimeError(f"UIAutomator could not obtain current UI: {output}")
+        stderr = transcript[-1]["stderr"]
+        if not ui_snapshot_available(output, stderr):
+            record.setdefault("unavailable_ui_snapshots", []).append({"index": index, "reason": NULL_UI_ROOT})
+            return None
         xml = command("exec-out", "cat", remote)
         (artifacts / f"page-{index:02d}.xml").write_text(xml)
-        return ET.fromstring(xml)
+        return parse_ui_hierarchy(xml)
 
     def chrome_nodes(root):
         def walk(node):
@@ -136,6 +161,11 @@ def main():
         while time.monotonic() < deadline and steps < args.max_pages:
             root = snapshot(index)
             index += 1
+            if root is None:
+                # Keep the original preflight deadline. No address, control or
+                # success may be inferred from an unavailable hierarchy.
+                time.sleep(1)
+                continue
             wait_control = quickstep_anr_wait_control(root, quickstep_waited)
             if wait_control is not None:
                 screenshot("observed-quickstep-anr")
