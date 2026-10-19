@@ -4,14 +4,14 @@
 
 A minimalist Android launcher for intentional phone use. Local settings, deliberate search, organized folders and optional focus rules. This project continues the existing v2.6 application and preserves its identity and data format.
 
-**Version:** 2.6.1-beta · **Android:** 8.0/API26 or newer · **License:** MIT
+**Version:** 2.7.0-beta · **Android:** 8.0/API26 or newer · **License:** MIT
 
 ## What it does
 
-- Independent Home, App List and folders, with an optional Home alphabet and configurable gestures.
+- Independent Home, App List and Folders. Home has a three-position Normal (icons), Minimalist (favorite text) and Alphabet (app list) slider; App List and Folders have separate photo wallpapers. Settings use grouped destinations and expandable details. See the [settings and appearance refresh](docs/SETTINGS_REFRESH.md).
 - Ranked app/alias search, tags (`#`), permission-based contacts (`@`), keyboard-submitted web searches (`/query`), five local recent web searches, compact protected folder results and opt-in searchable actions. Configured actions require a tap and retain ordinary launch authorization checks.
 - Direct held dragging of Home widgets and installed-app icons, independent widget presets and safe JSON style import with preview. Placement is saved on completed drops; cancelled movement is discarded.
-- Password/device-protected folders, manual ordering, per-folder RGB/image backgrounds and screen-adaptive custom folder grids, alongside the existing clock/date/battery/usage/weather/location widgets.
+- Password/device-protected folders, manual ordering, per-folder RGB/image backgrounds, optional photo-only covers with independent icon/name visibility, and screen-adaptive custom folder grids, alongside the existing clock/date/battery/usage/weather/location widgets.
 - **Live the Moment:** grouped limits, schedules, continuous Strict Block, controlled Breaks, warnings/grace and optional intention prompts. These are self-management tools, not tamper-proof parental controls.
 - Optional notification dismissal/digest with schedules, keywords, Strict Block scope and temporary suppression, plus local spam filtering with per-app overrides, allowlists and reviewable reasons. Critical categories, ongoing services and recognized security messages have preservation guards. Android channel settings control quiet delivery; a listener cannot undo an alert already played.
 
@@ -46,9 +46,9 @@ Physical-device observations supersede earlier completion reports. The focused L
 
 Earlier engineering reports and measurements remain historical records. Compilation, JVM checks and emulator results do not certify physical enforcement, OEM lifecycle behavior, gesture feel, battery performance or document-provider access.
 
-### Release screenshots
+### Earlier release screenshots
 
-Actual API35 emulator captures of the minified release:
+Historical API35 emulator captures of the minified release before the 2.7 settings refresh. Current UI captures are collected with the [refresh validation](docs/SETTINGS_REFRESH.md):
 
 | Home | App List | Settings |
 |---|---|---|
