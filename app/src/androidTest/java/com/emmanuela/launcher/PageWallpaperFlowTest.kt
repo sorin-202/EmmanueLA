@@ -329,10 +329,16 @@ class PageWallpaperFlowTest {
             assertTrue("The page label must remain visible in the dark letterbox", (0 until label.width).any { x ->
                 (0 until label.height).any { y -> label[x, y].let { it.red > .9f && it.green > .9f && it.blue > .9f } }
             })
+            captureUxScreenshot("page-wallpaper-fit-light")
             compose.onNodeWithText("Page counter: 0").performClick()
             assertTrue(model.savePageWallpaper("apps", null)); stored("apps", null)
             compose.onNodeWithTag("Page wallpaper: apps", useUnmergedTree = true).assertDoesNotExist()
             compose.onNodeWithText("Page counter: 1").assertIsDisplayed()
+            val restoredLabel = compose.onNodeWithText("apps page content").captureToImage().toPixelMap()
+            assertTrue("Removing the wallpaper must restore the light theme's dark page text", (0 until restoredLabel.width).any { x ->
+                (0 until restoredLabel.height).any { y -> restoredLabel[x, y].let { it.red < .1f && it.green < .1f && it.blue < .1f } }
+            })
+            captureUxScreenshot("page-wallpaper-removed-light")
         } finally { document.delete() }
     }
 

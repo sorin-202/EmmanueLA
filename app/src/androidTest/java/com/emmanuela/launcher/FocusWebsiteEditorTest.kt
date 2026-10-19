@@ -77,7 +77,34 @@ class FocusWebsiteEditorTest {
             })
         }
         fun toggle(label:String)=compose.onNodeWithContentDescription(label).performScrollTo().performClick()
-        fun save()=compose.onNodeWithText("Save").performScrollTo().performClick()
+        fun save(){
+            // performClick injects a finger tap. Reacquire its position after the
+            // editor scroll and IME have settled rather than tapping old geometry.
+            instrumentation.runOnMainSync{
+                val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).single()
+                WindowInsetsControllerCompat(activity.window,activity.window.decorView).hide(WindowInsetsCompat.Type.ime())
+            }
+            compose.onNodeWithText("Save").performScrollTo()
+            var previous:androidx.compose.ui.geometry.Rect?=null
+            var stable=0
+            var lastSample=0L
+            compose.waitUntil(5_000){
+                val now=android.os.SystemClock.uptimeMillis()
+                if(now-lastSample<100)false else{
+                    lastSample=now
+                    val bounds=compose.onNodeWithText("Save").fetchSemanticsNode().boundsInRoot
+                    var imeHidden=false
+                    instrumentation.runOnMainSync{
+                        val activity=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).single()
+                        imeHidden=ViewCompat.getRootWindowInsets(activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime())==false
+                    }
+                    stable=if(imeHidden&&!bounds.isEmpty&&bounds==previous)stable+1 else 0
+                    previous=bounds
+                    stable>=3
+                }
+            }
+            compose.onNodeWithText("Save").assertIsDisplayed().performTouchInput{click()}
+        }
         fun add()=compose.onNodeWithText("Add").performScrollTo().performClick()
         fun error(fragment:String){
             compose.onAllNodesWithText(fragment,substring=true).onLast().performScrollTo().assertIsDisplayed()
@@ -305,8 +332,16 @@ class FocusWebsiteEditorTest {
         }
         fun diagnostics():String {
             val node=runCatching{compose.onNodeWithContentDescription(masterLabel).fetchSemanticsNode()}.getOrNull()
+            val name=runCatching{compose.onNode(hasSetTextAction() and hasText("Group name")).fetchSemanticsNode()
+                .config.getOrNull(SemanticsProperties.EditableText)?.text}.getOrNull()
+            val text=runCatching{compose.onRoot(useUnmergedTree=true).fetchSemanticsNode().let{root->
+                fun labels(node:androidx.compose.ui.semantics.SemanticsNode):List<String> =
+                    node.config.getOrNull(SemanticsProperties.Text).orEmpty().map{it.text}+node.children.flatMap(::labels)
+                labels(root).joinToString(" | ")
+            }}.getOrNull()
             return "stage=$stage; observed=${observed.value?.settings?.ui?.v2?.backgroundRules}; model=${model.data.value.settings.ui.v2.backgroundRules}; " +
-                "UI=${node?.config?.getOrNull(SemanticsProperties.ToggleableState)}; bounds=${node?.boundsInRoot}; IME=${imeVisible()}; ready=${model.ready.value}; error=${model.error.value}"
+                "UI=${node?.config?.getOrNull(SemanticsProperties.ToggleableState)}; bounds=${node?.boundsInRoot}; IME=${imeVisible()}; ready=${model.ready.value}; error=${model.error.value}; " +
+                "name=$name; saves=${saves.get()}; groups=${observed.value?.focusGroups?.map{it.name}}; editor=$text"
         }
         fun checkpoint(value:String){
             stage=value

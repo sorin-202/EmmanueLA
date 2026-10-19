@@ -6,9 +6,13 @@ import android.graphics.Rect
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import com.emmanuela.launcher.data.ConfigurationRepository
 import com.emmanuela.launcher.data.FocusGroup
 import com.emmanuela.launcher.data.ExperiencePreferences
@@ -55,6 +59,37 @@ class SettingsNavigationTest {
                 .mapNotNull { it.contentDescription?.toString() ?: it.text?.toString() }.joinToString(" | "))
     }
 
+    private fun visibleTapBounds(node: AccessibilityNodeInfo): Rect {
+        val visible = Rect().also(node::getBoundsInScreen)
+        var ancestor = node.parent
+        while (ancestor != null) {
+            val parent = ancestor
+            if (parent.isScrollable) {
+                val viewport = Rect().also(parent::getBoundsInScreen)
+                if (!visible.intersect(viewport)) return Rect()
+            }
+            ancestor = parent.parent
+        }
+        val appFrame = Rect()
+        instrumentation.runOnMainSync {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED).filterIsInstance<MainActivity>().singleOrNull()
+            assertNotNull("Launcher must be resumed before injecting a settings tap", activity)
+            val decor = activity!!.window.decorView
+            decor.getWindowVisibleDisplayFrame(appFrame)
+            val insets = ViewCompat.getRootWindowInsets(decor)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars())
+            if (insets != null) {
+                val location = IntArray(2).also(decor::getLocationOnScreen)
+                val safeFrame = Rect(location[0] + insets.left, location[1] + insets.top,
+                    location[0] + decor.width - insets.right, location[1] + decor.height - insets.bottom)
+                if (!appFrame.intersect(safeFrame)) appFrame.setEmpty()
+            }
+        }
+        if (!visible.intersect(appFrame)) visible.setEmpty()
+        return visible
+    }
+
     private fun click(label: String, scroll: Boolean = false) {
         val deadline = SystemClock.uptimeMillis() + 5000
         var previous: Rect? = null
@@ -71,8 +106,21 @@ class SettingsNavigationTest {
                 continue
             }
             val bounds = Rect().also { node!!.getBoundsInScreen(it) }
+            val visible = visibleTapBounds(node!!)
+            // Compose can expose an isVisibleToUser node whose un-clipped bounds
+            // extend below its scroll viewport. Its centre can even be Android's
+            // Home button; require the complete control inside the app before tap.
+            if (visible.isEmpty || visible != bounds) {
+                assertTrue("Settings control must fit its visible viewport: $label ($bounds, $visible)", scroll)
+                node!!.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+                previous = null
+                stable = 0
+                SystemClock.sleep(50)
+                continue
+            }
             stable = if (bounds == previous && !bounds.isEmpty) stable + 1 else 0
             if (stable >= 2) {
+                android.util.Log.i("SettingsNavigation", "Native tap $label at $bounds in visible viewport $visible")
                 val down = SystemClock.uptimeMillis()
                 for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
                     val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,

@@ -442,7 +442,11 @@ class LauncherFlowTest {
         val webHistory=WebSearchHistoryRepository(instrumentation.targetContext)
         val originalHistory=webHistory.queries.first()
         val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        val observedHistory=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
         var observer:kotlinx.coroutines.Job?=null
+        var historyObserver:kotlinx.coroutines.Job?=null
+        var stage="prepare fixture"
+        fun checkpoint(value:String){stage=value;android.util.Log.i("LauncherFlowFixture","stage=$stage; history=${observedHistory.value}; breakUntil=${observed.value?.focusGroups?.singleOrNull()?.breakUntil}")}
         try {
             webHistory.clear()
             webHistory.record("earlier navigation search")
@@ -451,8 +455,11 @@ class LauncherFlowTest {
             // Observe before the click, as in the widget/editor tests: a cold
             // DataStore 1.1.7 subscription racing a write can miss its emission.
             observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            historyObserver=launch(kotlinx.coroutines.Dispatchers.IO){webHistory.queries.collect{observedHistory.value=it}}
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
+            kotlinx.coroutines.withTimeout(15_000){observedHistory.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use {
+                checkpoint("open App List and enter web search")
                 click("All Apps")
                 find("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
@@ -461,8 +468,19 @@ class LauncherFlowTest {
                 find("Recent web searches")
                 find("earlier navigation search")
                 assertFalse(nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.text?.toString()=="Search the web: example query"})
-                click("Clear history")
-                kotlinx.coroutines.withTimeout(15_000){webHistory.queries.first{it.isEmpty()}}
+                checkpoint("clear web history")
+                val clearPoint=center(find("Clear history"))
+                val clearDown=SystemClock.uptimeMillis()
+                for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                    val event=android.view.MotionEvent.obtain(clearDown,SystemClock.uptimeMillis(),action,clearPoint.x,clearPoint.y,0).apply{
+                        source=android.view.InputDevice.SOURCE_TOUCHSCREEN
+                    }
+                    try{assertTrue("Native Clear history touch must be accepted",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+                }
+                instrumentation.waitForIdleSync()
+                kotlinx.coroutines.withTimeout(15_000){observedHistory.filterNotNull().first{it.isEmpty()}}
+                assertTrue("Clearing through the UI must persist the empty history",webHistory.queries.first().isEmpty())
+                checkpoint("return Home")
                 click("Home")
                 // AnimatedContent briefly exposes incoming Home semantics while the
                 // drawer is leaving. Reacquire current geometry, then exercise the
@@ -501,20 +519,28 @@ class LauncherFlowTest {
                     try{assertTrue("Native Home Settings touch must be accepted",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
                 }
                 find("SETTINGS")
+                checkpoint("open saved focus group")
                 click("Live the Moment",scroll=true)
                 click("Test Focus",scroll=true)
+                checkpoint("open Break dialog")
                 click("Take a Break",scroll=true)
                 click("Start 10-minute Break")
+                checkpoint("await persisted Break")
                 kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil>System.currentTimeMillis()}}
                 find("End Break",scroll=true)
                 assertTrue(repository.data.first().focusGroups.single().breakUntil>System.currentTimeMillis())
+                checkpoint("end Break")
                 click("End Break")
                 find("Take a Break")
                 kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil==0L}}
                 assertEquals(0L,repository.data.first().focusGroups.single().breakUntil)
             }
+        }catch(failure:Throwable){
+            val visible=nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}
+                .mapNotNull{it.text?.toString()?:it.contentDescription?.toString()}.joinToString(" | ")
+            throw AssertionError("Web search and Break workflow failed: stage=$stage; history=${observedHistory.value}; breakUntil=${observed.value?.focusGroups?.singleOrNull()?.breakUntil}; UI=$visible",failure)
         }finally{
-            observer?.cancel();repository.restore(original)
+            observer?.cancel();historyObserver?.cancel();repository.restore(original)
             webHistory.clear();originalHistory.asReversed().forEach{webHistory.record(it)}
         }
     }

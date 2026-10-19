@@ -58,12 +58,17 @@ fun PageWallpaperSurface(page: String, settings: Preferences, modifier: Modifier
         surfaceContainerHigh = Color(0xff252525), surfaceVariant = Color(0xff252525),
         outline = Color(0xffaaaaaa), primaryContainer = Color(0xff333333), onPrimaryContainer = Color.White
     )
+    // MaterialTheme changes the scheme but does not replace an inherited content
+    // color. Text without an explicit color otherwise stays black in light mode.
+    val contentColor = if (image == null) LocalContentColor.current else pageColors.onSurface
     Box(modifier.fillMaxSize().background(if (image == null) colors.background else pageColors.surface)) {
         if (image != null && wallpaper != null) {
             PagePhoto(image, wallpaper.style, Modifier.matchParentSize().testTag("Page wallpaper: $page"))
         }
         // A decode or deleted-photo fallback must not recreate the App List/search state.
-        MaterialTheme(colorScheme = pageColors) { content() }
+        MaterialTheme(colorScheme = pageColors) {
+            CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
+        }
     }
 }
 
