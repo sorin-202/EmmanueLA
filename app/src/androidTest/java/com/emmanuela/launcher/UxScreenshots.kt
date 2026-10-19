@@ -14,7 +14,12 @@ fun captureUxScreenshot(name: String) {
         "Android did not provide the screenshot for $name"
     }
     try {
-        val directory = checkNotNull(instrumentation.targetContext.getExternalFilesDir("ux-screenshots"))
+        // UTP copies this directory to the host BEFORE its normal APK uninstall.
+        // App external files are removed by that uninstall, so a later adb pull loses them.
+        val runnerOutput = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?.takeIf { it.isNotBlank() }
+        val directory = if (runnerOutput != null) File(runnerOutput, "ux-screenshots")
+            else checkNotNull(instrumentation.targetContext.getExternalFilesDir("ux-screenshots"))
         check(directory.isDirectory || directory.mkdirs()) { "Cannot create screenshot directory" }
         FileOutputStream(File(directory, "$name.png")).use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "Could not encode $name" }

@@ -5,7 +5,10 @@ import android.os.SystemClock
 import android.graphics.Rect
 import android.view.InputDevice
 import android.view.MotionEvent
-import android.view.accessibility.AccessibilityNodeInfo
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
@@ -19,57 +22,61 @@ import com.emmanuela.launcher.data.ExperiencePreferences
 import com.emmanuela.launcher.data.LauncherData
 import com.emmanuela.launcher.data.Preferences
 import com.emmanuela.launcher.data.UiPreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.roundToInt
 
 /** Navigation must expose the same working settings without changing hidden configuration. */
 @RunWith(AndroidJUnit4::class)
 class SettingsNavigationTest {
+    @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
-    private fun nodes(node: AccessibilityNodeInfo?): List<AccessibilityNodeInfo> =
-        if (node == null) emptyList() else listOf(node) + (0 until node.childCount).flatMap { nodes(node.getChild(it)) }
 
-    private fun find(label: String, scroll: Boolean = false): AccessibilityNodeInfo {
-        val deadline = SystemClock.uptimeMillis() + 5000
-        var nextScroll = SystemClock.uptimeMillis() + 350
-        while (SystemClock.uptimeMillis() < deadline) {
-            val tree = nodes(instrumentation.uiAutomation.rootInActiveWindow)
-            val visible = tree.filter { it.isVisibleToUser && it.packageName?.toString() == instrumentation.targetContext.packageName }
-            (visible.firstOrNull { it.contentDescription?.toString() == label }
-                ?: visible.firstOrNull { it.text?.toString() == label })?.let { return it }
-            // The same disclosure header can be above the edited control. Ask Android
-            // to reveal that exact target rather than only scrolling further down.
-            val target = tree.firstOrNull { it.contentDescription?.toString() == label }
-                ?: tree.firstOrNull { it.text?.toString() == label }
-            if (scroll && target?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id) == true) {
-                nextScroll = SystemClock.uptimeMillis() + 350
-            }
-            if (scroll && SystemClock.uptimeMillis() >= nextScroll) {
-                tree.asReversed().firstOrNull { it.isScrollable && it.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) }
-                nextScroll = SystemClock.uptimeMillis() + 350
-            }
-            SystemClock.sleep(50)
+    private fun locate(label: String, clickable: Boolean = false): SemanticsNodeInteraction {
+        fun matcher(text: Boolean): SemanticsMatcher {
+            val labelMatcher = if (text) hasText(label) else hasContentDescription(label)
+            return if (clickable) labelMatcher and hasClickAction() else labelMatcher
         }
-        throw AssertionError("Missing settings control: $label. Visible: " +
-            nodes(instrumentation.uiAutomation.rootInActiveWindow).filter { it.isVisibleToUser }
-                .mapNotNull { it.contentDescription?.toString() ?: it.text?.toString() }.joinToString(" | "))
+        val text = compose.onAllNodes(matcher(text = true))
+        val description = compose.onAllNodes(matcher(text = false))
+        compose.waitUntil(5000) {
+            text.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() ||
+                description.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
+        // Home's underlying launcher surface also exposes "Home". Its settings
+        // card has actual text; prefer that before any content-description match.
+        return if (text.fetchSemanticsNodes().isNotEmpty()) text.onFirst() else description.onFirst()
     }
 
-    private fun visibleTapBounds(node: AccessibilityNodeInfo): Rect {
-        val visible = Rect().also(node::getBoundsInScreen)
-        var ancestor = node.parent
-        while (ancestor != null) {
-            val parent = ancestor
-            if (parent.isScrollable) {
-                val viewport = Rect().also(parent::getBoundsInScreen)
-                if (!visible.intersect(viewport)) return Rect()
-            }
-            ancestor = parent.parent
-        }
+    private fun find(label: String, scroll: Boolean = false): SemanticsNodeInteraction =
+        locate(label).also { if (scroll) it.performScrollTo(); it.assertIsDisplayed() }
+
+    private fun control(label: String, scroll: Boolean = false): SemanticsNodeInteraction =
+        locate(label, clickable = true).also { if (scroll) it.performScrollTo(); it.assertIsDisplayed() }
+
+    private fun screenBounds(node: SemanticsNode): Rect = Rect(
+        node.positionOnScreen.x.roundToInt(), node.positionOnScreen.y.roundToInt(),
+        (node.positionOnScreen.x + node.size.width).roundToInt(),
+        (node.positionOnScreen.y + node.size.height).roundToInt())
+
+    private fun visibleTapBounds(node: SemanticsNode): Rect {
+        // boundsInWindow includes ancestor clipping, unlike the bounds of a
+        // virtual AccessibilityNodeInfo after a disclosure expands offscreen.
+        val offset = node.positionOnScreen - node.positionInWindow
+        val clipped = node.boundsInWindow
+        val visible = Rect((clipped.left + offset.x).roundToInt(), (clipped.top + offset.y).roundToInt(),
+            (clipped.right + offset.x).roundToInt(), (clipped.bottom + offset.y).roundToInt())
         val appFrame = Rect()
         instrumentation.runOnMainSync {
             val activity = ActivityLifecycleMonitorRegistry.getInstance()
@@ -91,28 +98,19 @@ class SettingsNavigationTest {
     }
 
     private fun click(label: String, scroll: Boolean = false) {
+        val target = control(label, scroll)
         val deadline = SystemClock.uptimeMillis() + 5000
         var previous: Rect? = null
         var stable = 0
-        var requestedOnScreen = false
         while (SystemClock.uptimeMillis() < deadline) {
-            var node: AccessibilityNodeInfo? = find(label, scroll)
-            while (node != null && !node.isClickable) node = node.parent
-            assertNotNull("Settings control must be clickable: $label", node)
-            if (scroll && !requestedOnScreen) {
-                node!!.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
-                requestedOnScreen = true
-                instrumentation.waitForIdleSync()
-                continue
-            }
-            val bounds = Rect().also { node!!.getBoundsInScreen(it) }
-            val visible = visibleTapBounds(node!!)
-            // Compose can expose an isVisibleToUser node whose un-clipped bounds
-            // extend below its scroll viewport. Its centre can even be Android's
-            // Home button; require the complete control inside the app before tap.
+            compose.waitForIdle()
+            val node = target.fetchSemanticsNode()
+            val bounds = screenBounds(node)
+            val visible = visibleTapBounds(node)
+            android.util.Log.i("SettingsNavigation", "Target $label semantics=${node.id} bounds=$bounds viewport=$visible")
             if (visible.isEmpty || visible != bounds) {
                 assertTrue("Settings control must fit its visible viewport: $label ($bounds, $visible)", scroll)
-                node!!.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+                target.performScrollTo()
                 previous = null
                 stable = 0
                 SystemClock.sleep(50)
@@ -127,7 +125,7 @@ class SettingsNavigationTest {
                         bounds.exactCenterX(), bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
                     try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
                 }
-                instrumentation.waitForIdleSync()
+                compose.waitForIdle()
                 return
             }
             previous = bounds
@@ -142,8 +140,14 @@ class SettingsNavigationTest {
         val fixture = LauncherData(settings = Preferences(ui = UiPreferences(
             bottomBarWidth = .73f, bottomBarHeight = 67f, bottomBarPadding = 19f,
             experience = ExperiencePreferences(language = "en", advanced = false, autoLaunch = false))))
+        val observed = MutableStateFlow<LauncherData?>(null)
+        var observer: Job? = null
         try {
             repository.restore(fixture)
+            // Subscribe before UI writes, as in LauncherFlowTest: DataStore 1.1.7
+            // can race a newly started cold collector with a concurrent edit.
+            observer = launch(Dispatchers.IO) { repository.data.collect { observed.value = it } }
+            withTimeout(5000) { observed.filterNotNull().first() }
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 click("Launcher settings")
                 find("SETTINGS")
@@ -154,15 +158,17 @@ class SettingsNavigationTest {
                 click("Back")
                 find("SETTINGS")
                 click("More options")
-                withTimeout(5000) { repository.data.first { it.settings.ui.experience.advanced } }
+                withTimeout(5000) { observed.filterNotNull().first { it.settings.ui.experience.advanced } }
+                assertTrue(repository.data.first().settings.ui.experience.advanced)
                 scenario.recreate()
                 find("SETTINGS")
-                if (Build.VERSION.SDK_INT >= 30) assertEquals("Shown", find("More options").stateDescription?.toString())
+                if (Build.VERSION.SDK_INT >= 30) control("More options").assert(
+                    SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Shown"))
                 val expected = fixture.settings.copy(ui = fixture.settings.ui.copy(
                     experience = fixture.settings.ui.experience.copy(advanced = true)))
                 assertEquals("Showing extra controls must preserve every existing setting", expected, repository.data.first().settings)
                 click("More options")
-                withTimeout(5000) { repository.data.first { !it.settings.ui.experience.advanced } }
+                withTimeout(5000) { observed.filterNotNull().first { !it.settings.ui.experience.advanced } }
                 assertEquals(fixture.settings, repository.data.first().settings)
                 click("Personalize", scroll = true)
                 click("Appearance", scroll = true)
@@ -175,15 +181,22 @@ class SettingsNavigationTest {
                 find("NOTIFICATIONS")
                 assertEquals("Visiting reorganized pages must not alter configuration", fixture.settings, repository.data.first().settings)
             }
-        } finally { repository.restore(original) }
+        } finally {
+            observer?.cancelAndJoin()
+            repository.restore(original)
+        }
     }
 
     @Test fun appListDisclosureRestoresItsStateAndKeepsAnEditedSearchPreference() = runBlocking<Unit> {
         val repository = ConfigurationRepository(instrumentation.targetContext)
         val original = repository.data.first()
+        val observed = MutableStateFlow<LauncherData?>(null)
+        var observer: Job? = null
         try {
             repository.restore(LauncherData(settings = Preferences(autoKeyboard = false, ui = UiPreferences(
                 experience = ExperiencePreferences(language = "en", autoLaunch = false)))))
+            observer = launch(Dispatchers.IO) { repository.data.collect { observed.value = it } }
+            withTimeout(5000) { observed.filterNotNull().first() }
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 click("Launcher settings")
                 click("App list")
@@ -191,16 +204,21 @@ class SettingsNavigationTest {
                 captureUxScreenshot("settings-app-list")
                 click("Search", scroll = true)
                 click("Auto keyboard", scroll = true)
-                withTimeout(5000) { repository.data.first { it.settings.autoKeyboard } }
+                withTimeout(5000) { observed.filterNotNull().first { it.settings.autoKeyboard } }
+                assertTrue(repository.data.first().settings.autoKeyboard)
                 click("Search", scroll = true)
                 scenario.recreate()
                 find("APP LIST")
-                if (Build.VERSION.SDK_INT >= 30) assertEquals("Collapsed", find("Search", scroll = true).stateDescription?.toString())
+                if (Build.VERSION.SDK_INT >= 30) control("Search", scroll = true).assert(
+                    SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
                 assertTrue(ConfigurationRepository(instrumentation.targetContext).data.first().settings.autoKeyboard)
                 click("Search", scroll = true)
-                assertTrue("Edited search preference stays enabled after reopening", find("Auto keyboard", scroll = true).isChecked)
+                control("Auto keyboard", scroll = true).assertIsOn()
             }
-        } finally { repository.restore(original) }
+        } finally {
+            observer?.cancelAndJoin()
+            repository.restore(original)
+        }
     }
 
     @Test fun homeAndFocusSettingsRemainReachableWithRepresentativeSavedRules() = runBlocking<Unit> {
