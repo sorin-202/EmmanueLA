@@ -12,7 +12,13 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.emmanuela.launcher.data.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -87,17 +93,48 @@ class HomeModesFlowTest {
             .sortedWith(compareBy({ priority.indexOf(it.packageName).takeIf { index -> index >= 0 } ?: priority.size }, { it.packageName }))
             .take(6).map { Favorite(ComponentName(it.packageName, it.name).flattenToString()) }
         val representativeHome = fixture().let { it.copy(settings = it.settings.copy(showClock = true, favoriteCount = 6), favorites = favorites) }
+        val observed = MutableStateFlow<LauncherData?>(null)
+        var observer: Job? = null
+        var stage = "prepare fixture"
+        fun checkpoint(value: String) {
+            stage = value
+            android.util.Log.i("HomeModesFixture", "stage=$stage; persistedMode=${observed.value?.settings?.ui?.experience?.homeMode}")
+        }
         try {
             repository.restore(representativeHome)
+            // Observe before the Android slider action so its UI-triggered write
+            // cannot race the start of a new cold DataStore collector.
+            observer = launch(Dispatchers.IO) { repository.data.collect { observed.value = it } }
+            withTimeout(5000) { observed.filterNotNull().first() }
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                checkpoint("open Home settings")
                 find("Home layout: Minimalist")
                 click("Launcher settings")
                 click("Home")
                 for (mode in listOf(HomeModes.NORMAL, HomeModes.ALPHABET, HomeModes.MINIMALIST)) {
-                    val slider = find("Home layout", slider = true)
-                    assertTrue(slider.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
+                    checkpoint("settle slider before selecting $mode")
+                    val deadline = SystemClock.uptimeMillis() + 5000
+                    var previous: Pair<Rect, Float>? = null
+                    var stable = 0
+                    var slider: AccessibilityNodeInfo? = null
+                    while (SystemClock.uptimeMillis() < deadline) {
+                        val candidate = find("Home layout", slider = true)
+                        val bounds = Rect().also(candidate::getBoundsInScreen)
+                        val sample = bounds to candidate.rangeInfo.current
+                        stable = if (!bounds.isEmpty && sample == previous) stable + 1 else 0
+                        previous = sample
+                        if (stable >= 2) { slider = candidate; break }
+                        SystemClock.sleep(75)
+                    }
+                    assertNotNull("The actual Home slider must settle before requesting $mode: $previous", slider)
+                    val settled = requireNotNull(slider)
+                    android.util.Log.i("HomeModesFixture", "Request $mode: bounds=${previous?.first}; current=${settled.rangeInfo.current}; range=${settled.rangeInfo.min}..${settled.rangeInfo.max}")
+                    assertTrue(settled.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_PROGRESS.id,
                         Bundle().apply { putFloat(AccessibilityNodeInfo.ACTION_ARGUMENT_PROGRESS_VALUE, HomeModes.values.indexOf(mode).toFloat()) }))
-                    withTimeout(5000) { repository.data.first { it.settings.ui.experience.homeMode == mode } }
+                    checkpoint("await persisted $mode after slider action")
+                    withTimeout(5000) { observed.filterNotNull().first { it.settings.ui.experience.homeMode == mode } }
+                    assertEquals("Slider changes must persist in the repository", mode, repository.data.first().settings.ui.experience.homeMode)
+                    checkpoint("verify Home renders $mode")
                     click("Back")
                     click("Back")
                     find("Home layout: $mode")
@@ -109,7 +146,11 @@ class HomeModesFlowTest {
                     click("Home")
                 }
             }
-        } finally { repository.restore(original) }
+        } catch (failure: Throwable) {
+            val visible = nodes(instrumentation.uiAutomation.rootInActiveWindow).filter { it.isVisibleToUser }
+                .mapNotNull { it.contentDescription?.toString() ?: it.text?.toString() }.joinToString(" | ")
+            throw AssertionError("Home slider workflow failed: stage=$stage; persistedMode=${observed.value?.settings?.ui?.experience?.homeMode}; UI=$visible", failure)
+        } finally { observer?.cancelAndJoin(); repository.restore(original) }
     }
 
     @Test fun everyLayoutKeepsHiddenFavoritesHiddenAndUsesBlockedLaunch() = runBlocking<Unit> {

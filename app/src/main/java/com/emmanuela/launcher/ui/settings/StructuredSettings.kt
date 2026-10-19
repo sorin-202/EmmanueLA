@@ -149,7 +149,7 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
         SettingsHeading(title,{if(page=="settings")close()else navigate(SettingsRoutes.parent(page))},data,model)
         if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
         // Scroll state is keyed only by route; toggling Advanced retains page and scroll position.
-        key(page) { Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom=24.dp)) {
+        key(page) { Column(Modifier.weight(1f).navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom=24.dp)) {
             when {
                 page=="settings" -> {
                     Text(localized("Make it yours. Keep what matters."),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -445,7 +445,10 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                     }
                     val focusNow=com.emmanuela.launcher.ui.mindful.rememberFocusTime()
                     val enforcement by com.emmanuela.launcher.platform.EnforcementBridge.status.collectAsStateWithLifecycle()
-                    SectionLabel("Groups")
+                    Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically){
+                        Text(localized("Groups"),Modifier.weight(1f),style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick={navigate("group:new")}){Text(localized("+ Create group"))}
+                    }
                     if(data.focusGroups.isEmpty())Text(localized("Create a group for apps, websites or URL keywords. Choose continuous blocking, limits or a schedule."),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(bottom=12.dp))
                     data.focusGroups.forEach{g->
                         Surface(Modifier.fillMaxWidth().padding(vertical=5.dp),shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha=.55f)){
@@ -470,11 +473,10 @@ fun StructuredSettingsContent(page:String,data:LauncherData,apps:List<Launchable
                                 if(webError!=null)Text(webError,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                 else if(com.emmanuela.launcher.data.FocusWebsiteRules.hasWebTargets(g)&&(!v.backgroundRules||!enforcement.connected))
                                     Text(localized("Website rules inactive: enable background enforcement and Accessibility, and wait for the service connection."),color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-                                Text(localized(if(g.strict&&g.requireAuthentication)"Changes protected by device authentication"else "Changes are not protected"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=4.dp))
+                                if(g.strict&&g.requireAuthentication)Text(localized("Changes protected by device authentication"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,modifier=Modifier.padding(top=4.dp))
                             }
                         }
                     }
-                    Button(onClick={navigate("group:new")},modifier=Modifier.fillMaxWidth().padding(top=12.dp)){Text(localized("+ Create group"))}
                 }
                 page.startsWith("group:") -> FocusGroupEditor(page.substringAfter(':'),data,apps,model){navigate("live-moment")}
                 page.startsWith("app-detail:") -> {

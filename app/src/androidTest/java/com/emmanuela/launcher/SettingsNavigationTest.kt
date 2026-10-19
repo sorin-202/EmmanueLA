@@ -97,6 +97,37 @@ class SettingsNavigationTest {
         return visible
     }
 
+    private fun scrollWithinSafeViewport(node: SemanticsNode, bounds: Rect) {
+        val scrollable = generateSequence(node.parent) { it.parent }
+            .firstOrNull { hasScrollAction().matches(it) }
+        assertNotNull("Clipped settings control must have a scrollable ancestor", scrollable)
+        val viewport = visibleTapBounds(scrollable!!)
+        assertFalse("Scrollable settings body must be visible", viewport.isEmpty)
+        val upward = bounds.bottom > viewport.bottom
+        assertTrue("Vertical scrolling must be able to reveal $bounds inside $viewport",
+            upward || bounds.top < viewport.top)
+        val distance = minOf(300f, viewport.height() * .4f)
+        val fromY = viewport.exactCenterY() + if (upward) distance / 2 else -distance / 2
+        val toY = viewport.exactCenterY() + if (upward) -distance / 2 else distance / 2
+        val downTime = SystemClock.uptimeMillis()
+        fun pointer(action: Int, y: Float) {
+            val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action,
+                viewport.exactCenterX(), y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+        }
+        android.util.Log.i("SettingsNavigation", "Native scroll in $viewport from $fromY to $toY to reveal $bounds")
+        pointer(MotionEvent.ACTION_DOWN, fromY)
+        for (step in 1..12) {
+            pointer(MotionEvent.ACTION_MOVE, fromY + (toY - fromY) * step / 12f)
+            SystemClock.sleep(16)
+        }
+        // Pause the finger before lifting so the viewport does not fling past
+        // this control while the helper checks its visible bounds again.
+        repeat(6) { pointer(MotionEvent.ACTION_MOVE, toY); SystemClock.sleep(16) }
+        pointer(MotionEvent.ACTION_UP, toY)
+        compose.waitForIdle()
+    }
+
     private fun click(label: String, scroll: Boolean = false) {
         val target = control(label, scroll)
         val deadline = SystemClock.uptimeMillis() + 5000
@@ -110,7 +141,10 @@ class SettingsNavigationTest {
             android.util.Log.i("SettingsNavigation", "Target $label semantics=${node.id} bounds=$bounds viewport=$visible")
             if (visible.isEmpty || visible != bounds) {
                 assertTrue("Settings control must fit its visible viewport: $label ($bounds, $visible)", scroll)
-                target.performScrollTo()
+                // The semantic scroll viewport can include Android's navigation
+                // region. Another performScrollTo() is then a no-op; use the
+                // actual visible body for a normal native scroll instead.
+                scrollWithinSafeViewport(node, bounds)
                 previous = null
                 stable = 0
                 SystemClock.sleep(50)
