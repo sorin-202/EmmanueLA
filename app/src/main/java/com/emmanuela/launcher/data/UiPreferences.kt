@@ -21,10 +21,12 @@ data class UiPreferences(
     val searchCursorColor: Long = 0L, val searchCursorWidth: Float = 2f, val searchCursorBlinkMs: Int = 500,
     val folderFill: Boolean = false, val folderLayout: String = "Adaptive", val folderAppIcons: Boolean = false,
     val v2: V2Preferences = V2Preferences(),
-    val experience: ExperiencePreferences = ExperiencePreferences()
+    val experience: ExperiencePreferences = ExperiencePreferences(),
+    val pageWallpapers: Map<String, PageWallpaper> = emptyMap()
 )
 object UiPreferencesCodec {
     fun encode(p: UiPreferences) = JSONObject().apply {
+        put("pageWallpapers", PageWallpapers.encode(p.pageWallpapers))
         put("experience",ExperienceCodec.encode(p.experience))
         put("v2", V2Codec.encode(p.v2))
         put("appListEnabled", p.appListEnabled); put("searchPosition", p.searchPosition); put("searchStyle", p.searchStyle)
@@ -74,7 +76,8 @@ object UiPreferencesCodec {
             o.optBoolean("folderFill"),
             choice("folderLayout", "Adaptive", listOf("Adaptive", "List", "Freeform", "Canvas")), o.optBoolean("folderAppIcons"),
             o.optJSONObject("v2")?.let(V2Codec::decode) ?: V2Preferences(),
-            o.optJSONObject("experience")?.let(ExperienceCodec::decode) ?: ExperiencePreferences()
+            o.optJSONObject("experience")?.let(ExperienceCodec::decode) ?: ExperiencePreferences(),
+            o.optJSONObject("pageWallpapers")?.let(PageWallpapers::decode) ?: emptyMap()
         )
     }
 }

@@ -62,4 +62,12 @@ class NotificationRulesTest {
     @Test(expected=IllegalArgumentException::class) fun invalidRulesAreRejected(){
         NotificationRules.decode(NotificationRules.encode(NotificationRule()).put("start",1440))
     }
+    @Test fun digestIntervalsPreserveGlobalDefaultAndExplicitPerAppChoices(){
+        assertEquals(60,NotificationRules.digestMinutes(null,60))
+        assertEquals(60,NotificationRules.digestMinutes(AppPolicy(),60))
+        assertEquals(15,NotificationRules.digestMinutes(AppPolicy(digestMinutes=15),60))
+        val explicit=AppPolicy(notificationRule=NotificationRule(digestIntervalOverride=true))
+        assertEquals(30,NotificationRules.digestMinutes(explicit,60))
+        assertEquals(explicit,PolicyCodec.decode(PolicyCodec.encode(mapOf("app" to explicit))).getValue("app"))
+    }
 }

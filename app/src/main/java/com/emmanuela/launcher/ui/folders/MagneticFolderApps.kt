@@ -21,7 +21,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
@@ -55,8 +59,11 @@ fun MagneticFolderApps(folder:AppFolder,entries:List<LaunchableApp>,arranging:Bo
             if(speed!=0f)grid.scrollBy(speed*density.density*seconds)
         }
     }
-    @Composable fun tile(app:LaunchableApp,mod:Modifier){
-        if(folder.layout=="Grid")Column(mod.padding(spacing.dp),horizontalAlignment=Alignment.CenterHorizontally){if(icons)AppIcon(app,model);Text(badgeLabel(app))}
+    @Composable fun tile(app:LaunchableApp,mod:Modifier,cellHeight:Dp=96.dp){
+        if(folder.layout=="Grid")Column(mod.height(cellHeight).padding(spacing.dp.coerceAtMost(8.dp)),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
+            if(icons)AppIcon(app,model)
+            Text(badgeLabel(app),maxLines=2,overflow=TextOverflow.Ellipsis,textAlign=TextAlign.Center,style=MaterialTheme.typography.labelMedium)
+        }
         else Row(mod.padding(vertical=spacing.dp),verticalAlignment=Alignment.CenterVertically){if(icons){AppIcon(app,model);Spacer(Modifier.width(12.dp))};Text(badgeLabel(app),style=MaterialTheme.typography.headlineSmall)}
     }
     val gesture=if(arranging)Modifier.pointerInput(folder.id,arranging){
@@ -76,19 +83,22 @@ fun MagneticFolderApps(folder:AppFolder,entries:List<LaunchableApp>,arranging:Bo
                 dragged=null;delta=Offset.Zero
             })
         } else Modifier
-    Box(modifier.onGloballyPositioned{viewport=it.boundsInRoot()}.then(gesture)){
-        LazyVerticalGrid(GridCells.Fixed(if(folder.layout=="Grid")2 else 1),state=grid,modifier=Modifier.fillMaxSize()){
+    BoxWithConstraints(modifier.then(gesture)){
+        val columns=if(folder.layout=="Grid")FolderContentGrid.columns(folder.gridColumns,maxWidth.value)else 1
+        val rowHeight=FolderContentGrid.rowHeight(folder.gridRows,(maxHeight.value-24f).coerceAtLeast(1f)).dp
+        val gridHeight=if(folder.layout=="Grid")(rowHeight*folder.gridRows+24.dp).coerceAtMost(maxHeight)else maxHeight
+        LazyVerticalGrid(GridCells.Fixed(columns),state=grid,modifier=Modifier.fillMaxWidth().height(gridHeight).testTag("folder-app-grid").onGloballyPositioned{viewport=it.boundsInRoot()},userScrollEnabled=dragged==null,contentPadding=PaddingValues(bottom=24.dp)){
             items(displayed,key={it.id}){app->
                 DisposableEffect(app.id){onDispose{bounds.remove(app.id)}}
                 val touch=if(arranging)Modifier else Modifier.combinedClickable(onClick={launch(app)},onLongClick={manage(app.id)})
                 tile(app,Modifier.animateItem().fillMaxWidth().onGloballyPositioned{bounds[app.id]=it.boundsInRoot()}.graphicsLayer{alpha=if(dragged?.id==app.id)0f else 1f}
-                    .then(touch))
+                    .then(touch),rowHeight)
             }
         }
         dragged?.let{app->
             tile(app,Modifier.width(with(density){origin.width.toDp()}).height(with(density){origin.height.toDp()}).zIndex(100f)
                 .graphicsLayer{translationX=origin.left-viewport.left+delta.x;translationY=origin.top-viewport.top+delta.y;shadowElevation=with(density){8.dp.toPx()}}
-                .background(MaterialTheme.colorScheme.surface).border(1.dp,MaterialTheme.colorScheme.primary))
+                .background(MaterialTheme.colorScheme.surface).border(1.dp,MaterialTheme.colorScheme.primary),rowHeight)
         }
     }
 }

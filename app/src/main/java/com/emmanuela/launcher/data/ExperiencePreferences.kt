@@ -68,7 +68,10 @@ data class ExperiencePreferences(
     val gentleReminder: Boolean = false,
     val reminderMinutes: Int = 30,
     val widgetScales: Map<String,Float> = emptyMap(),
-    val widgetAlignments: Map<String,String> = emptyMap()
+    val widgetAlignments: Map<String,String> = emptyMap(),
+    val spamMode:SpamMode=SpamMode.OFF,
+    /** Null preserves the text/alphabet choice saved by older launcher versions. */
+    val homeMode:String?=null
 )
 object ExperienceCodec {
     fun encode(p:ExperiencePreferences)=JSONObject().apply {
@@ -92,6 +95,7 @@ object ExperienceCodec {
         put("cursorCharacter",p.cursorCharacter)
         put("alphabetHaptics",p.alphabetHaptics)
         put("homeAlphabet",p.homeAlphabet)
+        p.homeMode?.let { require(it in HomeModes.values); put("homeMode", it) }
         put("homeAlphabetPosition",p.homeAlphabetPosition)
         put("homeAlphabetStyle",p.homeAlphabetStyle);put("homeAlphabetAnimation",p.homeAlphabetAnimation);put("homeAlphabetHaptics",p.homeAlphabetHaptics)
         put("folderSpacing",p.folderSpacing)
@@ -115,6 +119,7 @@ object ExperienceCodec {
         put("bottomPosition",p.bottomPosition)
         put("digestEnabled",p.digestEnabled)
         put("digestInterval",p.digestInterval)
+        put("spamMode",p.spamMode.name)
         put("hideFromSearch",p.hideFromSearch)
         put("hidePrivateSearch",p.hidePrivateSearch)
         put("autoLock",p.autoLock)
@@ -164,6 +169,7 @@ object ExperienceCodec {
             cursorCharacter=o.optString("cursorCharacter",d.cursorCharacter).also{require(it.length<=2)},
             alphabetHaptics=o.optBoolean("alphabetHaptics",d.alphabetHaptics),
             homeAlphabet=o.optBoolean("homeAlphabet",d.homeAlphabet),
+            homeMode=if(o.isNull("homeMode"))null else o.getString("homeMode").also{require(it in HomeModes.values)},
             homeAlphabetStyle=choice("homeAlphabetStyle",d.homeAlphabetStyle,listOf("Minimal","Compact")),
             homeAlphabetAnimation=choice("homeAlphabetAnimation",d.homeAlphabetAnimation,listOf("None","Wave","Bubble","Fade")),
             homeAlphabetHaptics=o.optBoolean("homeAlphabetHaptics",d.homeAlphabetHaptics),
@@ -189,6 +195,7 @@ object ExperienceCodec {
             bottomPosition=choice("bottomPosition",d.bottomPosition,listOf("Bottom")),
             digestEnabled=o.optBoolean("digestEnabled",d.digestEnabled),
             digestInterval=o.optInt("digestInterval",d.digestInterval).also{require(it in 15..120)},
+            spamMode=SpamMode.valueOf(o.optString("spamMode",SpamMode.OFF.name)),
             hideFromSearch=o.optBoolean("hideFromSearch",d.hideFromSearch),
             hidePrivateSearch=o.optBoolean("hidePrivateSearch",d.hidePrivateSearch),
             autoLock=choice("autoLock",d.autoLock,listOf("Immediately","30 seconds","Screen off")),

@@ -12,6 +12,7 @@ import com.emmanuela.launcher.data.Favorite
 import com.emmanuela.launcher.data.FocusWindows
 import com.emmanuela.launcher.data.FocusCodec
 import com.emmanuela.launcher.data.FocusGroup
+import com.emmanuela.launcher.data.FocusWebsiteRules
 import com.emmanuela.launcher.data.FolderPassword
 import com.emmanuela.launcher.data.FolderPlacement
 import com.emmanuela.launcher.data.LaunchableApp
@@ -150,7 +151,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     _data.value = it; ready.value = true
                     NotificationBadges.enabled.value=it.settings.ui.v2.showBadges
                     NotificationBadges.muted.value=it.policies.filterValues{p->p.badgesMuted||p.hidden}.keys
-                    val enabled = it.settings.ui.v2.notificationFilter && it.settings.ui.experience.digestEnabled && it.policies.values.any { p -> p.notifications == NotificationMode.DIGEST }
+                    val enabled = it.settings.ui.v2.notificationFilter && it.settings.ui.experience.digestEnabled
                     if (digestScheduled != enabled) {
                         getApplication<Application>().updateDigestWork(enabled); digestScheduled = enabled
                     }
@@ -211,6 +212,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         if (!ready.value) return
         viewModelScope.launch { write { repository.update { state->val next=transform(state.settings);state.copy(settings=next.copy(ui=next.ui.copy(v2=next.ui.v2.copy(photoStyles=next.ui.v2.photoStyles.filterKeys{it in next.wallpapers})))) } } }
     }
+    suspend fun savePageWallpaper(page: String, wallpaper: com.emmanuela.launcher.data.PageWallpaper?): Boolean = write {
+        var previous: String? = null
+        repository.update { state ->
+            previous = state.settings.ui.pageWallpapers[page]?.uri
+            com.emmanuela.launcher.data.PageWallpapers.changed(state, page, wallpaper)
+        }
+        com.emmanuela.launcher.data.FolderImageGrants.cleanup(getApplication<Application>(), listOfNotNull(previous))
+    }
+
     fun unlockFolderWithDevice(id:String):Boolean {
         val folder=data.value.folders.find{it.id==id}?:return false
         if(!folder.biometricUnlock||!getApplication<Application>().getSystemService(android.app.KeyguardManager::class.java).isDeviceSecure)return false
@@ -279,12 +289,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         repository.update { state -> state.copy(folders = if (state.folders.any { it.id == folder.id })
             state.folders.map { if (it.id == folder.id) secured else it } else state.folders + secured) }
         if (secured.isProtected) unlockedFolders.value += secured.id
+        com.emmanuela.launcher.data.FolderImageGrants.cleanup(getApplication<Application>(), listOf(previous?.imageUri.orEmpty()))
     }
-    suspend fun deleteFolder(id: String): Boolean = write { repository.update { state ->
-        val folder = state.folders.firstOrNull { it.id == id }
-        require(folder == null || !folder.isProtected || id in unlockedFolders.value)
-        state.copy(folders = state.folders.filterNot { it.id == id })
-    } }
+    suspend fun deleteFolder(id: String): Boolean = write {
+        val previousImage = _data.value.folders.firstOrNull { it.id == id }?.imageUri.orEmpty()
+        repository.update { state ->
+            val folder = state.folders.firstOrNull { it.id == id }
+            require(folder == null || !folder.isProtected || id in unlockedFolders.value)
+            state.copy(folders = state.folders.filterNot { it.id == id })
+        }
+        com.emmanuela.launcher.data.FolderImageGrants.cleanup(getApplication<Application>(), listOf(previousImage))
+    }
     suspend fun saveFavorites(favorites: List<Favorite>): Boolean = write {
         require(favorites.size <= 8)
         repository.update { it.copy(favorites = favorites) }
@@ -335,6 +350,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         kotlinx.coroutines.withContext(Dispatchers.IO) {
             repository.restore(LauncherData())
             DigestRepository(context).clear()
+            com.emmanuela.launcher.data.WebSearchHistoryRepository(context).reset()
             context.getSharedPreferences("weather_cache",android.content.Context.MODE_PRIVATE).edit().clear().commit()
             java.io.File(context.filesDir,"custom-font.ttf").delete()
             context.contentResolver.persistedUriPermissions.forEach { permission ->
@@ -380,9 +396,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
     suspend fun saveFocusGroup(group:FocusGroup):Boolean=write {
         require(group.name.isNotBlank()&&group.name.length<=40&&(group.packages.isNotEmpty()||group.websites.isNotEmpty()||group.keywords.isNotEmpty()))
-        FocusCodec.decode(FocusCodec.encode(listOf(group))) // Validate before writing an unreadable configuration.
+        val configurationError=FocusWebsiteRules.configurationError(group,com.emmanuela.launcher.platform.BrowserAdapters.ids.keys)
+        require(configurationError==null){configurationError.orEmpty()}
+        val saved=FocusWebsiteRules.normalized(group)
+        FocusCodec.decode(FocusCodec.encode(listOf(saved))) // Validate before writing an unreadable configuration.
         // Strict edits are authenticated in the UI; never exported authentication tokens.
-        repository.update{state->require(state.focusGroups.none{it.id==group.id&&it.strict&&it.requireAuthentication} || strictAuthorizations.remove(group.id));state.copy(focusGroups=if(state.focusGroups.any{it.id==group.id})state.focusGroups.map{if(it.id==group.id)group else it}else state.focusGroups+group)}
+        repository.update{state->require(state.focusGroups.none{it.id==saved.id&&it.strict&&it.requireAuthentication} || strictAuthorizations.remove(saved.id));state.copy(focusGroups=if(state.focusGroups.any{it.id==saved.id})state.focusGroups.map{if(it.id==saved.id)saved else it}else state.focusGroups+saved)}
     }
     suspend fun deleteFocusGroup(id:String):Boolean=write {repository.update{require(it.focusGroups.none{g->g.id==id&&g.strict&&g.requireAuthentication}||strictAuthorizations.remove(id));it.copy(focusGroups=it.focusGroups.filterNot{g->g.id==id})}}
     private suspend fun mayLaunch(packageName: String, app:LaunchableApp?=null,privateAuthorized:Boolean=false): Boolean {

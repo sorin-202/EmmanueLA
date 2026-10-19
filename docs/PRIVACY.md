@@ -1,6 +1,6 @@
 # Privacy and platform capabilities
 
-EmmanueLA stores settings, aliases, tags, folders and focus rules locally. It has no account, advertising or analytics SDK. Android backup is disabled; explicit configuration exports exclude media grants and font files. Password-protected folders use salted PBKDF2; this is launcher access control, not encryption of other apps.
+EmmanueLA stores settings, aliases, tags, folders, focus rules and the last five explicitly executed web searches locally. It has no account, advertising or analytics SDK. Web history can be cleared and is excluded from portable exports. Android backup is disabled; explicit configuration exports exclude media grants and font files. Password-protected folders use salted PBKDF2; this is launcher access control, not encryption of other apps.
 
 ## Permission audit
 | Permission / access | Feature | Denied or disabled |
@@ -24,7 +24,7 @@ Weather requests send selected coordinates to api.open-meteo.com and typed locat
 ## Reliability classification
 - Launcher app admission: deterministic local rule evaluation; API35 tests verify blocked-policy and intention gates. Physical/OEM acceptance remains outstanding.
 - External-app blocking: BEST-EFFORT optional accessibility overlay; owner/OEM can disable it.
-- Website blocking: BEST-EFFORT visible address matching. The tested official Firefox157 normal address source is UNSUPPORTED and reports an honest diagnostic. Legacy Firefox IDs and Chrome/beta, Brave, Edge and Samsung hints are unvalidated. Hidden address bars, private modes, custom tabs, browser updates and inaccessible trees can prevent matching. See BROWSER_COMPATIBILITY.md for exact version/mode evidence.
+- Website blocking: BEST-EFFORT visible address matching. The Firefox Compose address source is now implemented alongside traditional address-control adapters. Implementation is distinct from runtime browser/version verification; see BROWSER_COMPATIBILITY.md and DEVICE_REPAIR_VALIDATION.md for current evidence. Hidden address bars, private modes, custom tabs, browser updates and inaccessible trees can prevent matching.
 - Opera: UNSUPPORTED by current adapters.
 - Selective Shorts/Reels/Explore/feed suppression: UNSUPPORTED. No claim that a launcher can reliably remove arbitrary native app surfaces.
 - Notification quiet delivery: initial sound/heads-up cannot be reversed after listener delivery. Use Android per-app channels for reliable quiet delivery.
@@ -33,3 +33,7 @@ Weather requests send selected coordinates to api.open-meteo.com and typed locat
 No network VPN or embedded social-media client is added. A VPN cannot identify encrypted URL paths without invasive interception; app-specific accessibility heuristics or web wrappers would add privacy, maintenance and reliability costs.
 
 Notification rule extension: optional keyword matching reads title/text/big-text only for applicable opted-in rules, in memory. No message content is logged or saved. Notification access and connected-listener status are distinct. Per-app schedules and Strict Block integration reevaluate on rule/time changes and at boundaries; incoming notifications are evaluated at their arrival time. Temporary suppression dismisses clearable notifications for 30 minutes and is excluded from portable exports. Calls, alarms, ongoing, media and service notifications remain exempt. Configuration v9 reads v2-v8. See Android's NotificationListenerService lifecycle contract: https://developer.android.com/reference/android/service/notification/NotificationListenerService .
+
+Spam filtering is off by default. Opted-in local rules use bounded in-memory fingerprints, frequency and promotional/keyword signals, with per-app overrides and allowlists. Persistent review data contains package counts, generic classification reasons and hashed notification identities; no notification text. Navigation, authentication/security and essential foreground-service notifications are conservatively exempt. Dismissed original notifications cannot be faithfully recreated through Android's public listener API; Allow future changes subsequent filtering.
+
+Widget style import reads at most 32 KiB of UTF-8 JSON from a user-selected document, validates a versioned whitelist and previews before applying. It cannot load code, URLs, actions or external resources. Folder images use persisted document read grants and bounded local decoding; unused folder grants are released without revoking references still used by other folders or wallpapers.

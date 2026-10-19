@@ -51,6 +51,14 @@ class ConfigurationTest {
         assertFalse(portable.settings.dailyWallpaper)
         assertEquals("keep", portable.settings.note)
     }
+    @Test fun portableFolderBackupKeepsAppearanceAndGridWithoutDeviceImageGrant() {
+        val folder = AppFolder("photos", "Photos", "folder", listOf("camera/.Main"),
+            color = 0xff2468acL, imageUri = "content://photos/folder", gridColumns = 5,
+            gridRows = 4, manualOrder = true)
+        val portable = ConfigurationCodec.decode(ConfigurationCodec.encode(
+            ConfigurationCodec.portable(LauncherData(folders = listOf(folder)))))
+        assertEquals(folder.copy(imageUri = ""), portable.folders.single())
+    }
     @Test(expected = IllegalArgumentException::class)
     fun rejectsOutOfRangeTextSize() {
         ConfigurationCodec.decode(ConfigurationCodec.encode(LauncherData(Preferences(textScale = 100f))))

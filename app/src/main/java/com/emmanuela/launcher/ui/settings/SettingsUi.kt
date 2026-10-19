@@ -33,7 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
@@ -46,29 +48,35 @@ object PublicLinks { const val GITHUB = "https://github.com/sorin-202/EmmanueLA"
 
 @Composable
 fun SettingRow(label: String, value: String = "", onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(localized(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+    val accessibleLabel=localized(label)
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics{contentDescription=accessibleLabel}
+        .clickable(onClick = onClick).padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(accessibleLabel, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         if (value.isNotEmpty()) Text(value, Modifier.widthIn(max = 150.dp).padding(start = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 @Composable
 fun ToggleRow(label: String, value: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
+    val accessibleLabel=localized(label)
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(localized(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(value, change, enabled = enabled, modifier = Modifier.semantics { contentDescription = label })
+        Text(accessibleLabel, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(value, change, enabled = enabled, modifier = Modifier.semantics { contentDescription = accessibleLabel })
     }
 }
 @Composable
 fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int = 0, save: (Float) -> Unit) {
     var local by remember(value) { mutableFloatStateOf(value) }
+    val accessibleLabel=localized(label)
     Column(Modifier.padding(vertical = 8.dp)) {
-        Text("${localized(label)}: ${"%.2f".format(local)}", style = MaterialTheme.typography.bodyLarge)
-        Slider(local, { local = it }, valueRange = range, steps = steps, onValueChangeFinished = { save(local) }, modifier = Modifier.semantics { contentDescription = label })
+        Text("$accessibleLabel: ${"%.2f".format(local)}", style = MaterialTheme.typography.bodyLarge)
+        Slider(local, { local = it }, valueRange = range, steps = steps, onValueChangeFinished = { save(local) }, modifier = Modifier.semantics { contentDescription = accessibleLabel })
     }
 }
 @Composable
 fun SectionLabel(label: String, prominent:Boolean=false) {
-    Text(localized(label), style = if(prominent)MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 28.dp, bottom = 10.dp))
+    Text(localized(label), style = if(prominent)MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium, letterSpacing = if(prominent)0.sp else .4.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 22.dp, bottom = 10.dp))
     if(!prominent)HorizontalDivider(color=MaterialTheme.colorScheme.outline.copy(alpha=.12f))
 }
 

@@ -5,16 +5,19 @@ package com.emmanuela.launcher.ui.home
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.LaunchableApp
 import com.emmanuela.launcher.data.LauncherData
+import com.emmanuela.launcher.data.HomeModes
 import com.emmanuela.launcher.data.styleForPhoto
 import com.emmanuela.launcher.platform.WallpaperCache
 import com.emmanuela.launcher.platform.badgeLabel
 import com.emmanuela.launcher.ui.appearance.WallpaperLayer
 import com.emmanuela.launcher.ui.components.VectorSymbol
+import com.emmanuela.launcher.ui.components.AppIcon
 import com.emmanuela.launcher.ui.components.localized
 import com.emmanuela.launcher.ui.navigation.HomeTapRouter
 import com.emmanuela.launcher.ui.navigation.LocalGestureRegions
 import com.emmanuela.launcher.ui.navigation.LocalHomeTapRouter
 import com.emmanuela.launcher.ui.navigation.homeClick
+import com.emmanuela.launcher.ui.navigation.ownsVerticalScroll
 import com.emmanuela.launcher.ui.settings.actionName
 
 
@@ -46,6 +49,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -54,6 +58,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontFamily
@@ -107,6 +112,9 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
     val taps = remember(scope) { HomeTapRouter(scope) }
     val config = LocalViewConfiguration.current
     val density = LocalDensity.current
+    var shortcutPicker by remember { mutableStateOf(false) }
+    var homeItemBounds by remember { mutableStateOf(IntSize.Zero) }
+    var widgetDragging by remember { mutableStateOf(false) }
     val latestAction by rememberUpdatedState(action)
     val latestSettings by rememberUpdatedState(settings)
     val latestPrefs by rememberUpdatedState(p)
@@ -125,22 +133,32 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
             val textColor = if (u.widgetColor != 0L) Color(u.widgetColor) else baseColor
             val family = when (u.widgetFont) { "Sans" -> FontFamily.SansSerif; "Serif" -> FontFamily.Serif; "Monospace" -> FontFamily.Monospace; else -> MaterialTheme.typography.bodyLarge.fontFamily }
             CompositionLocalProvider(LocalContentColor provides baseColor) {
-                Column(Modifier.fillMaxSize().then(if(arranging)Modifier.clearAndSetSemantics{}else Modifier).padding(horizontal = 24.dp, vertical = 12.dp)) {
+                Column(Modifier.fillMaxSize().then(if(arranging)Modifier.clearAndSetSemantics{}else Modifier).navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp)) {
                     Spacer(Modifier.weight(1f))
                     val align = when (p.alignment) { "Left" -> Alignment.Start; "Center" -> Alignment.CenterHorizontally; else -> Alignment.End }
-                    val visible = data.favorites.filter { data.policies[it.id.substringBefore('/')]?.hidden != true }.take(p.favoriteCount)
-                    Column(Modifier.weight(2f).fillMaxWidth().then(if(!u.experience.homeAlphabet||arranging)Modifier.verticalScroll(rememberScrollState())else Modifier), verticalArrangement = Arrangement.Center, horizontalAlignment = align) {
-                        if(u.experience.homeAlphabet && !arranging) HomeAlphabetArea(data,apps,launch,editApp) else {
-                        if (visible.isEmpty() && p.favoriteCount > 0) Text(localized("+ Choose favorites"), Modifier.homeClick("Choose favorites", favorites).padding(12.dp))
-                        visible.forEach { favorite ->
-                            val app = apps.find { it.id == favorite.id }
-                            val name = app?.let{badgeLabel(it)} ?: data.appMetadata[favorite.id]?.alias?.takeIf { it.isNotBlank() } ?: "Unavailable app"
-                            Text(name, style = MaterialTheme.typography.headlineSmall,
-                                textAlign = when(p.alignment) { "Left" -> TextAlign.Start; "Center" -> TextAlign.Center; else -> TextAlign.End },
-                                color = if (app != null) baseColor else baseColor.copy(alpha = .45f),
-                                modifier = Modifier.homeClick(name, { app?.let(launch) }, { editApp(favorite.id) }).padding(vertical = u.experience.homeSpacing.dp), maxLines = 2)
+                    val visible = remember(data.favorites, data.policies, p.favoriteCount, apps) { homeFavoriteItems(data, apps) }
+                    val homeMode = if(arranging) HomeModes.MINIMALIST else HomeModes.effective(u.experience)
+                    Column(Modifier.weight(2f).fillMaxWidth().semantics { contentDescription = "Home layout: $homeMode" }
+                        .then(if(homeMode == HomeModes.MINIMALIST)Modifier.verticalScroll(rememberScrollState())else Modifier),
+                        verticalArrangement = Arrangement.Center, horizontalAlignment = align) {
+                        when(homeMode) {
+                            HomeModes.ALPHABET -> HomeAlphabetArea(data,apps,launch,editApp)
+                            HomeModes.NORMAL -> {
+                                if(visible.isEmpty() && p.favoriteCount > 0) Text(localized("+ Choose favorites"), Modifier.homeClick("Choose favorites", favorites).padding(12.dp))
+                                else HomeIconFavorites(visible,data,model,baseColor,launch,editApp)
+                            }
+                            else -> {
+                                if (visible.isEmpty() && p.favoriteCount > 0) Text(localized("+ Choose favorites"), Modifier.homeClick("Choose favorites", favorites).padding(12.dp))
+                                visible.forEach { favorite ->
+                                    val app = favorite.app
+                                    val name = app?.let{badgeLabel(it)} ?: data.appMetadata[favorite.id]?.alias?.takeIf { it.isNotBlank() } ?: "Unavailable app"
+                                    Text(name, style = MaterialTheme.typography.headlineSmall,
+                                        textAlign = when(p.alignment) { "Left" -> TextAlign.Start; "Center" -> TextAlign.Center; else -> TextAlign.End },
+                                        color = if (app != null) baseColor else baseColor.copy(alpha = .45f),
+                                        modifier = Modifier.homeClick(name, { app?.let(launch) }, { editApp(favorite.id) }).padding(vertical = u.experience.homeSpacing.dp), maxLines = 2)
+                                }
+                            }
                         }
-                    }
                     }
                     if (u.bottomShortcuts) Row(
                         Modifier.fillMaxWidth(u.bottomBarWidth).height(u.bottomBarHeight.dp).align(Alignment.CenterHorizontally).offset(y=(-u.bottomBarOffset).dp).padding(horizontal=u.bottomBarPadding.dp),
@@ -150,10 +168,37 @@ private fun HomeScreenContent(data: LauncherData, apps: List<LaunchableApp>, mod
                         BottomShortcut(u.v2.shortcutMode,u.v2.rightVector,actionName(u.rightShortcut,apps),baseColor,u.bottomBarTextScale,u.bottomBarWeight,u.bottomBarPadding){action(u.rightShortcut)}
                     }
                     // Always reachable even if every custom gesture/shortcut is reassigned.
-                    Text(localized("Settings"), style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp).homeClick("Launcher settings", settings).padding(12.dp))
+                    Row(Modifier.align(Alignment.CenterHorizontally),verticalAlignment=Alignment.CenterVertically) {
+                        Text(localized("Settings"), style = MaterialTheme.typography.labelSmall, modifier = Modifier.heightIn(min = 48.dp).homeClick("Launcher settings", settings).padding(12.dp))
+                        if(!arranging)Text(localized("+ App"),style=MaterialTheme.typography.labelSmall,modifier=Modifier.heightIn(min=48.dp).homeClick("Add app to Home",{shortcutPicker=true}).padding(12.dp))
+                    }
                 }
             }
-            HomeWidgets(data,model,now,battery,action,Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(bottom=100.dp),arranging)
+            val itemsModifier=Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(bottom=100.dp).onSizeChanged{homeItemBounds=it}
+            HomeWidgets(data,model,now,battery,action,itemsModifier.zIndex(if(widgetDragging)1f else 0f),arranging){widgetDragging=it}
+            if(!arranging)CompositionLocalProvider(LocalContentColor provides baseColor) { HomeShortcuts(data,apps,model,launch,itemsModifier) }
+            if(shortcutPicker)HomeShortcutPicker(data,apps,model,with(density){homeItemBounds.width.toDp().value},with(density){homeItemBounds.height.toDp().value}){shortcutPicker=false}
+        }
+    }
+}
+
+@Composable
+private fun HomeIconFavorites(items:List<HomeFavoriteItem>,data:LauncherData,model:LauncherViewModel,
+    color:Color,launch:(LaunchableApp)->Unit,editApp:(String)->Unit) {
+    LazyVerticalGrid(columns=GridCells.Adaptive(80.dp),modifier=Modifier.fillMaxSize().ownsVerticalScroll("home-icon-favorites"),
+        horizontalArrangement=Arrangement.spacedBy(8.dp),
+        verticalArrangement=Arrangement.spacedBy((data.settings.ui.experience.homeSpacing+8).dp,Alignment.CenterVertically)) {
+        items(items,key={it.id}) { favorite ->
+            val app=favorite.app
+            val name=app?.let{badgeLabel(it)}?:data.appMetadata[favorite.id]?.alias?.takeIf{it.isNotBlank()}?:"Unavailable app"
+            Column(Modifier.fillMaxWidth().homeClick(name,{app?.let(launch)},{editApp(favorite.id)}).padding(horizontal=4.dp,vertical=8.dp),
+                horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.size(48.dp),contentAlignment=Alignment.Center) {
+                    if(app!=null)AppIcon(app,model)else Text("?",style=MaterialTheme.typography.headlineMedium,color=color.copy(alpha=.45f))
+                }
+                Text(name,style=MaterialTheme.typography.labelLarge,textAlign=TextAlign.Center,
+                    color=if(app!=null)color else color.copy(alpha=.45f),maxLines=2,overflow=TextOverflow.Ellipsis)
+            }
         }
     }
 }

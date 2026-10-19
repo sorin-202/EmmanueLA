@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,16 +29,20 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /** Draw-only caret customization; IME, selection and semantics remain BasicTextField's. */
 @Composable
-fun CursorSearchField(query:String,change:(String)->Unit,p:Preferences,modifier:Modifier=Modifier,placeholder:String="") {
+fun CursorSearchField(query:String,change:(String)->Unit,p:Preferences,modifier:Modifier=Modifier,placeholder:String="",onSearch:()->Unit={}) {
     val u=p.ui;val e=u.experience
     val hint=placeholder.ifEmpty{if(e.contactsSearch)"Search apps, #tag or @contact" else "Search apps or #tag"}
     var value by remember{mutableStateOf(TextFieldValue(query))}
-    if(value.text!=query)value=value.copy(text=query,selection=androidx.compose.ui.text.TextRange(query.length))
+    // A clear or external replacement ends the IME's composition of the previous
+    // query. Keeping it would clamp that stale composition onto the new text.
+    if(value.text!=query)value=value.copy(text=query,selection=androidx.compose.ui.text.TextRange(query.length),composition=null)
     var layout by remember{mutableStateOf<TextLayoutResult?>(null)}
     var focused by remember{mutableStateOf(false)}
     var visible by remember{mutableStateOf(true)}
@@ -48,10 +54,16 @@ fun CursorSearchField(query:String,change:(String)->Unit,p:Preferences,modifier:
     Row(modifier.heightIn(min=52.dp).then(if(u.searchStyle in listOf("Pill","Box","Outline","Floating Outline"))Modifier.border(1.dp,if(focused)accent else MaterialTheme.colorScheme.outline,shape)else Modifier),verticalAlignment=Alignment.CenterVertically){
         if((u.tagSearch&&AppSearch.isTagMode(query)) || (e.contactsSearch&&query.trimStart().startsWith("@")))Box(Modifier.padding(start=12.dp).size(26.dp).border(1.dp,MaterialTheme.colorScheme.onSurface,CircleShape),contentAlignment=Alignment.Center){Text(if(query.trimStart().startsWith("@"))"@" else "#")}
         BasicTextField(value,{value=it;change(it.text)},singleLine=true,textStyle=MaterialTheme.typography.bodyLarge.copy(color=MaterialTheme.colorScheme.onSurface),cursorBrush=SolidColor(Color.Transparent),onTextLayout={layout=it},
-            modifier=Modifier.weight(1f).padding(14.dp).onFocusChanged{focused=it.isFocused}.drawWithContent{
+            keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={onSearch()}),
+            modifier=Modifier.weight(1f).padding(14.dp).onPreviewKeyEvent{event->
+                if(event.key==Key.Enter||event.key==Key.NumPadEnter){if(event.type==KeyEventType.KeyUp)onSearch();true}else false
+            }.onFocusChanged{focused=it.isFocused}.drawWithContent{
                 drawContent()
                 val result=layout
-                if(focused&&visible&&value.selection.collapsed&&result!=null){val rect=result.getCursorRect(value.selection.start.coerceIn(0,value.text.length));val w=when(e.cursorStyle){"Thin"->1.dp.toPx();"Thick"->4.dp.toPx();"Block"->8.dp.toPx();else->u.searchCursorWidth.dp.toPx()}
+                val current=value
+                // Input/selection state can advance before BasicTextField publishes its next
+                // measured layout. Never query or paint a caret against the previous text.
+                if(focused&&visible&&current.selection.collapsed&&result!=null&&result.layoutInput.text.text==current.text){val rect=result.getCursorRect(current.selection.start.coerceIn(0,result.layoutInput.text.length));val w=when(e.cursorStyle){"Thin"->1.dp.toPx();"Thick"->4.dp.toPx();"Block"->8.dp.toPx();else->u.searchCursorWidth.dp.toPx()}
                     when(e.cursorStyle){"Underline"->drawRect(cursor,Offset(rect.left,rect.bottom-2.dp.toPx()),Size(8.dp.toPx(),2.dp.toPx()))
                         "Custom"->drawContext.canvas.nativeCanvas.apply{drawText(e.cursorCharacter,rect.left,rect.bottom,cursorPaint.apply{color=cursor.toArgb();textSize=rect.height})}
                         else->drawRect(cursor.copy(alpha=if(e.cursorStyle=="Block").55f else 1f),Offset(rect.left,rect.top),Size(w,rect.height))}

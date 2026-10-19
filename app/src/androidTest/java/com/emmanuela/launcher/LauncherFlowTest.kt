@@ -113,7 +113,7 @@ class LauncherFlowTest {
                 click("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Vault")}))
-                click("▦ Vault");find("Unlock folder")
+                click("Folder: Vault, protected");find("Unlock folder")
                 val input=find("Password",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(input.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"test-only-password")}))
                 click("Unlock");find("Vault")
@@ -134,7 +134,7 @@ class LauncherFlowTest {
             observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{placements.add(it.settings.ui.v2.widgetPositions["clock"]);observed.value=it}}
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                click("Launcher settings");click("Home",match={it.text?.toString()=="Home"});click("Arrange widgets",scroll=true)
+                click("Launcher settings");click("Home",match={it.text?.toString()?.lineSequence()?.any{line->line=="Home"}==true});click("Arrange widgets",scroll=true)
                 fun clock()=center(find("Clock",match={it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}"))==true}))
                 clock()
                 assertEquals("Only the arrangement clock is exposed",1,nodes(instrumentation.uiAutomation.rootInActiveWindow).count{it.isVisibleToUser&&it.text?.toString()?.matches(Regex("\\d{2}:\\d{2}"))==true})
@@ -169,9 +169,29 @@ class LauncherFlowTest {
     @Test fun configuredSearchActionRequiresTapAndCanBeRemoved()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
+        // As in the widget/editor flows, observe before interaction: DataStore 1.1.7
+        // can miss a write when a new cold collector starts concurrently (431787506).
+        val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        var observer:kotlinx.coroutines.Job?=null
+        suspend fun awaitActions(stage:String,expected:Set<String>){
+            val result=kotlinx.coroutines.withTimeoutOrNull(15_000){
+                observed.filterNotNull().first{it.settings.ui.experience.searchActions==expected}
+            }
+            val visible=if(result==null)runCatching {
+                val root=instrumentation.uiAutomation.rootInActiveWindow
+                "owner=${root?.packageName}; labels="+nodes(root).filter{it.isVisibleToUser}.mapNotNull{
+                    it.text?.toString()?.takeIf{label->label.isNotBlank()}
+                        ?:it.contentDescription?.toString()?.takeIf{label->label.isNotBlank()}
+                }.joinToString(" | ")
+            }.getOrElse{"Native labels unavailable: ${it.javaClass.simpleName}: ${it.message}"} else ""
+            assertNotNull("Search action wait [$stage] timed out; expected=$expected; observed=${observed.value?.settings?.ui?.experience?.searchActions}; $visible",result)
+            assertEquals("Search actions after $stage",expected,result!!.settings.ui.experience.searchActions)
+        }
         try {
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=true,searchActions=setOf("settings"))))))
-            ActivityScenario.launch(MainActivity::class.java).use {
+            observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            awaitActions("initial Settings fixture",setOf("settings"))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 click("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"Settings")}))
@@ -179,34 +199,57 @@ class LauncherFlowTest {
                 SystemClock.sleep(500)
                 click("Action: Settings")
                 click("App list",scroll=true)
+                click("Search",scroll=true)
                 click("Search actions",scroll=true)
                 find("Choose up to 16 actions to find by name in App List search. Actions always require a tap.")
                 click("Settings")
-                kotlinx.coroutines.withTimeout(15_000){repository.data.first{it.settings.ui.experience.searchActions.isEmpty()}}
+                awaitActions("remove Settings",emptySet())
+                assertEquals("Removed action survives repository recreation",emptySet<String>(),ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.experience.searchActions)
                 click("Add search action")
                 click("Clock",scroll=true)
-                kotlinx.coroutines.withTimeout(15_000){repository.data.first{"clock" in it.settings.ui.experience.searchActions}}
+                awaitActions("add Clock",setOf("clock"))
+                assertEquals("Clock survives repository recreation",setOf("clock"),ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.experience.searchActions)
+                scenario.recreate()
+                assertEquals("Clock survives activity and repository recreation",setOf("clock"),ConfigurationRepository(instrumentation.targetContext).data.first().settings.ui.experience.searchActions)
             }
-        }finally{repository.restore(original)}
+        }finally{observer?.cancel();observer?.join();repository.restore(original)}
     }
     @Test fun homeAndDrawerSwipesRespectDirectionAndCancellation()=runBlocking<Unit> {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
+        fun settledControl(label:String,match:((AccessibilityNodeInfo)->Boolean)?=null):android.graphics.PointF {
+            val deadline=SystemClock.uptimeMillis()+5000
+            var previous:android.graphics.Rect?=null
+            var stable=0
+            while(SystemClock.uptimeMillis()<deadline){
+                // AnimatedContent can replace the semantics node while returning Home.
+                // Reacquire its current node instead of refreshing a detached old one.
+                val node=nodes(instrumentation.uiAutomation.rootInActiveWindow).firstOrNull{it.isVisibleToUser&&(match?.invoke(it)?: (it.text?.toString()==label||it.contentDescription?.toString()==label))}
+                if(node!=null){
+                    val bounds=android.graphics.Rect();node.getBoundsInScreen(bounds)
+                    stable=if(bounds==previous&&!bounds.isEmpty)stable+1 else 0
+                    if(stable==3)return android.graphics.PointF(bounds.exactCenterX(),bounds.exactCenterY())
+                    previous=bounds
+                }else{stable=0;previous=null}
+                SystemClock.sleep(100)
+            }
+            throw AssertionError("$label must settle for three geometry samples; last bounds=$previous")
+        }
         try {
             repository.restore(LauncherData(settings=Preferences(showClock=false,showDate=false,showBattery=false,favoriteCount=0,ui=UiPreferences(bottomShortcuts=false,experience=ExperiencePreferences(language="en",autoLaunch=false)))))
             ActivityScenario.launch(MainActivity::class.java).use {
-                center(find("Launcher settings"))
+                settledControl("Launcher settings")
                 val screen=android.graphics.Rect().also{instrumentation.uiAutomation.rootInActiveWindow!!.getBoundsInScreen(it)}
                 fun point(x:Float,y:Float)=android.graphics.PointF(screen.left+screen.width()*x,screen.top+screen.height()*y)
                 drag(point(.5f,.65f),point(.5f,.3f),hold=0,cancel=true)
-                center(find("Launcher settings"))
+                settledControl("Launcher settings")
                 assertFalse("Cancelled swipe stays Home",nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.className?.toString()=="android.widget.EditText"})
                 drag(point(.5f,.65f),point(.5f,.3f),hold=0)
-                center(find("Search",match={it.className?.toString()=="android.widget.EditText"}))
+                settledControl("Search",match={it.className?.toString()=="android.widget.EditText"})
                 drag(point(.8f,.55f),point(.2f,.55f),hold=0)
-                center(find("Organized Folders"))
+                settledControl("Organized Folders")
                 drag(point(.2f,.55f),point(.8f,.55f),hold=0)
-                center(find("Launcher settings"))
+                settledControl("Launcher settings")
                 assertFalse(nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.className?.toString()=="android.widget.EditText"})
             }
         }finally{repository.restore(original)}
@@ -242,16 +285,43 @@ class LauncherFlowTest {
         val original=repository.data.first()
         val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
         var observer:kotlinx.coroutines.Job?=null
+        var uiModel:LauncherViewModel?=null
         suspend fun saved(stage:String,predicate:(AppPolicy)->Boolean) {
-            val result=kotlinx.coroutines.withTimeoutOrNull(15_000){observed.filterNotNull().first{it.policies["com.android.settings"]?.let(predicate)==true}}
+            val model=requireNotNull(uiModel)
+            val result=kotlinx.coroutines.withTimeoutOrNull(15_000){
+                kotlinx.coroutines.flow.combine(observed.filterNotNull(),model.data){persisted,displayed->persisted to displayed}.first{(persisted,displayed)->
+                    persisted.policies["com.android.settings"]?.let(predicate)==true&&displayed.policies["com.android.settings"]?.let(predicate)==true
+                }
+            }
             assertNotNull("Persistence wait [$stage] timed out; observed=${observed.value?.policies?.get("com.android.settings")}",result)
+        }
+        fun tapVisibleButton(label:String){
+            // Saving replaces the draft's remembered state. Resolve and settle the
+            // current visible node before a real touch, rather than clicking a cached ID.
+            val node=find(label,scroll=true,match={candidate->
+                var control:AccessibilityNodeInfo?=candidate
+                while(control!=null&&!control.isClickable)control=control.parent
+                candidate.text?.toString()==label&&control?.isEnabled==true
+            })
+            node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+            instrumentation.waitForIdleSync()
+            val point=center(node)
+            val down=SystemClock.uptimeMillis()
+            for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                val properties=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+                val coordinates=android.view.MotionEvent.PointerCoords().apply{x=point.x;y=point.y;pressure=1f;size=1f}
+                val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(properties),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+                try{assertTrue("Inject touch for $label",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+            }
+            instrumentation.waitForIdleSync()
         }
         try {
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false)))))
             observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                click("Launcher settings");click("Apps",scroll=true);click("Notifications");click("Settings",scroll=true)
+                scenario.onActivity{uiModel=androidx.lifecycle.ViewModelProvider(it)[LauncherViewModel::class.java]}
+                click("Launcher settings");click("App & system",scroll=true);click("Apps",scroll=true);click("Notifications");click("Settings",scroll=true)
                 click("Delivery");click("DISMISS");click("Apply rule",scroll=true);click("Schedule")
                 val keywords=find("Keywords",scroll=true,match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(keywords.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"urgent\nmeeting")}))
@@ -263,9 +333,9 @@ class LauncherFlowTest {
                 })
                 click("Save notification rule",scroll=true)
                 saved("save-rule"){it.notifications==NotificationMode.DISMISS&&it.notificationRule.scope==NotificationScope.SCHEDULE&&it.notificationRule.keywords==setOf("urgent","meeting")}
-                click("Suppress for 30 minutes",scroll=true)
+                tapVisibleButton("Suppress for 30 minutes")
                 saved("suppress-30-min"){it.notificationRule.suppressUntil>System.currentTimeMillis()}
-                click("End suppression",scroll=true)
+                tapVisibleButton("End suppression")
                 saved("end-suppression"){it.notificationRule.suppressUntil==0L}
                 scenario.recreate()
                 val policy=repository.data.first().policies.getValue("com.android.settings")
@@ -341,6 +411,21 @@ class LauncherFlowTest {
     			bounds.bottom <= safeBottom + 1
 )
                 }
+                assertSafeControl("Launcher settings")
+                assertSafeControl("Add app to Home")
+                // Accessibility ACTION_CLICK can activate a control covered by
+                // Android's navigation bar. Exercise the visible Home control
+                // with a real touch, then verify its destination before returning.
+                val settingsPoint=center(find("Launcher settings"))
+                val down=SystemClock.uptimeMillis()
+                for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                    val pointer=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+                    val coordinates=android.view.MotionEvent.PointerCoords().apply{x=settingsPoint.x;y=settingsPoint.y;pressure=1f;size=1f}
+                    val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(pointer),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+                    try{assertTrue("Native touch opens Launcher settings",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+                }
+                find("SETTINGS")
+                click("←")
                 click("All Apps")
                 assertSafeControl("Hidden Apps")
                 assertSafeControl("Organized Folders →")
@@ -354,35 +439,109 @@ class LauncherFlowTest {
     @Test fun appListWebIntentAndControlledBreakWorkflowRender()=runBlocking {
         val repository=ConfigurationRepository(instrumentation.targetContext)
         val original=repository.data.first()
+        val webHistory=WebSearchHistoryRepository(instrumentation.targetContext)
+        val originalHistory=webHistory.queries.first()
         val observed=kotlinx.coroutines.flow.MutableStateFlow<LauncherData?>(null)
+        val observedHistory=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
         var observer:kotlinx.coroutines.Job?=null
+        var historyObserver:kotlinx.coroutines.Job?=null
+        var stage="prepare fixture"
+        fun checkpoint(value:String){stage=value;android.util.Log.i("LauncherFlowFixture","stage=$stage; history=${observedHistory.value}; breakUntil=${observed.value?.focusGroups?.singleOrNull()?.breakUntil}")}
         try {
+            webHistory.clear()
+            webHistory.record("earlier navigation search")
             repository.restore(LauncherData(settings=Preferences(ui=UiPreferences(experience=ExperiencePreferences(language="en",autoLaunch=false))),
                 focusGroups=listOf(FocusGroup(id="flow",name="Test Focus",packages=setOf("com.android.camera2"),dailyMinutes=0,pause=false,blockAlways=true))))
             // Observe before the click, as in the widget/editor tests: a cold
             // DataStore 1.1.7 subscription racing a write can miss its emission.
             observer=launch(kotlinx.coroutines.Dispatchers.IO){repository.data.collect{observed.value=it}}
+            historyObserver=launch(kotlinx.coroutines.Dispatchers.IO){webHistory.queries.collect{observedHistory.value=it}}
             kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first()}
+            kotlinx.coroutines.withTimeout(15_000){observedHistory.filterNotNull().first()}
             ActivityScenario.launch(MainActivity::class.java).use {
+                checkpoint("open App List and enter web search")
                 click("All Apps")
                 find("All Apps")
                 val field=find("Search field",match={it.className?.toString()=="android.widget.EditText"})
                 assertTrue(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,"/example query")}))
-                find("Search the web: example query")
+                find("Type after / and press Search")
+                find("Recent web searches")
+                find("earlier navigation search")
+                assertFalse(nodes(instrumentation.uiAutomation.rootInActiveWindow).any{it.text?.toString()=="Search the web: example query"})
+                checkpoint("clear web history")
+                val clearPoint=center(find("Clear history"))
+                val clearDown=SystemClock.uptimeMillis()
+                for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                    val event=android.view.MotionEvent.obtain(clearDown,SystemClock.uptimeMillis(),action,clearPoint.x,clearPoint.y,0).apply{
+                        source=android.view.InputDevice.SOURCE_TOUCHSCREEN
+                    }
+                    try{assertTrue("Native Clear history touch must be accepted",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+                }
+                instrumentation.waitForIdleSync()
+                kotlinx.coroutines.withTimeout(15_000){observedHistory.filterNotNull().first{it.isEmpty()}}
+                assertTrue("Clearing through the UI must persist the empty history",webHistory.queries.first().isEmpty())
+                checkpoint("return Home")
                 click("Home")
-                click("Launcher settings")
+                // AnimatedContent briefly exposes incoming Home semantics while the
+                // drawer is leaving. Reacquire current geometry, then exercise the
+                // rendered Settings button instead of invoking a detached node.
+                val deadline=SystemClock.uptimeMillis()+5_000
+                var previous:Pair<Int,android.graphics.Rect>?=null
+                var stable=0
+                var settingsPoint:android.graphics.PointF?=null
+                while(SystemClock.uptimeMillis()<deadline){
+                    val root=instrumentation.uiAutomation.rootInActiveWindow
+                    val tree=nodes(root)
+                    val drawerGone=tree.none{it.isVisibleToUser&&it.className?.toString()=="android.widget.EditText"}
+                    val settings=tree.firstOrNull{it.isVisibleToUser&&it.isEnabled&&it.isClickable&&
+                        it.packageName?.toString()==instrumentation.targetContext.packageName&&it.contentDescription?.toString()=="Launcher settings"}
+                    if(root?.packageName?.toString()==instrumentation.targetContext.packageName&&drawerGone&&settings!=null){
+                        val bounds=android.graphics.Rect().also(settings::getBoundsInScreen)
+                        val current=settings.windowId to bounds
+                        stable=if(!bounds.isEmpty&&current==previous)stable+1 else 0
+                        previous=current
+                        if(stable>=3){
+                            settingsPoint=android.graphics.PointF(bounds.exactCenterX(),bounds.exactCenterY())
+                            android.util.Log.i("LauncherFlowFixture","Home settled: Settings window=${settings.windowId}, bounds=$bounds, stableSamples=$stable, drawerGone=$drawerGone")
+                            break
+                        }
+                    }else{stable=0;previous=null}
+                    SystemClock.sleep(100)
+                }
+                assertNotNull("Home Settings must settle after drawer removal; last=$previous; visible="+
+                    nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}.mapNotNull{it.text?:it.contentDescription},settingsPoint)
+                val point=settingsPoint!!
+                val down=SystemClock.uptimeMillis()
+                for(action in listOf(android.view.MotionEvent.ACTION_DOWN,android.view.MotionEvent.ACTION_UP)){
+                    val pointer=android.view.MotionEvent.PointerProperties().apply{id=0;toolType=android.view.MotionEvent.TOOL_TYPE_FINGER}
+                    val coordinates=android.view.MotionEvent.PointerCoords().apply{x=point.x;y=point.y;pressure=1f;size=1f}
+                    val event=android.view.MotionEvent.obtain(down,SystemClock.uptimeMillis(),action,1,arrayOf(pointer),arrayOf(coordinates),0,0,1f,1f,0,0,android.view.InputDevice.SOURCE_TOUCHSCREEN,0)
+                    try{assertTrue("Native Home Settings touch must be accepted",instrumentation.uiAutomation.injectInputEvent(event,true))}finally{event.recycle()}
+                }
+                find("SETTINGS")
+                checkpoint("open saved focus group")
                 click("Live the Moment",scroll=true)
                 click("Test Focus",scroll=true)
+                checkpoint("open Break dialog")
                 click("Take a Break",scroll=true)
                 click("Start 10-minute Break")
+                checkpoint("await persisted Break")
                 kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil>System.currentTimeMillis()}}
                 find("End Break",scroll=true)
                 assertTrue(repository.data.first().focusGroups.single().breakUntil>System.currentTimeMillis())
+                checkpoint("end Break")
                 click("End Break")
                 find("Take a Break")
                 kotlinx.coroutines.withTimeout(15_000){observed.filterNotNull().first{it.focusGroups.single().breakUntil==0L}}
                 assertEquals(0L,repository.data.first().focusGroups.single().breakUntil)
             }
-        }finally{observer?.cancel();repository.restore(original)}
+        }catch(failure:Throwable){
+            val visible=nodes(instrumentation.uiAutomation.rootInActiveWindow).filter{it.isVisibleToUser}
+                .mapNotNull{it.text?.toString()?:it.contentDescription?.toString()}.joinToString(" | ")
+            throw AssertionError("Web search and Break workflow failed: stage=$stage; history=${observedHistory.value}; breakUntil=${observed.value?.focusGroups?.singleOrNull()?.breakUntil}; UI=$visible",failure)
+        }finally{
+            observer?.cancel();historyObserver?.cancel();repository.restore(original)
+            webHistory.clear();originalHistory.asReversed().forEach{webHistory.record(it)}
+        }
     }
 }

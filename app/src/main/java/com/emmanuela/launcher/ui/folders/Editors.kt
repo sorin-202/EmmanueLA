@@ -3,6 +3,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.emmanuela.launcher.LauncherViewModel
 import com.emmanuela.launcher.data.AppFolder
+import com.emmanuela.launcher.data.FolderImageGrants
 import com.emmanuela.launcher.data.AppMetadata
 import com.emmanuela.launcher.data.AppNaming
 import com.emmanuela.launcher.data.AppSearch
@@ -18,6 +19,7 @@ import com.emmanuela.launcher.ui.settings.SectionLabel
 import com.emmanuela.launcher.ui.settings.selectionMarker
 import com.emmanuela.launcher.ui.settings.ChoiceRow
 import com.emmanuela.launcher.ui.settings.SettingsHeading
+import com.emmanuela.launcher.ui.settings.SettingsSection
 import com.emmanuela.launcher.ui.settings.ToggleRow
 
 
@@ -33,6 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,7 @@ import java.util.UUID
 @Composable
 fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: LauncherViewModel,
                  dismiss: () -> Unit, deleted: () -> Unit) {
+    val folderState by model.data.collectAsStateWithLifecycle()
     val id = rememberSaveable(existing?.id) { existing?.id ?: UUID.randomUUID().toString() }
     var name by rememberSaveable(id) { mutableStateOf(existing?.name ?: "") }
     var icon by rememberSaveable(id) { mutableStateOf(existing?.icon ?: "folder") }
@@ -51,6 +55,26 @@ fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: Launche
     var tileWidth by rememberSaveable(id){mutableFloatStateOf(existing?.widthDp?:0f)}
     var widthUnits by rememberSaveable(id){mutableIntStateOf(existing?.widthUnits?:0)}
     var heightUnits by rememberSaveable(id){mutableIntStateOf(existing?.heightUnits?:0)}
+    var gridColumns by rememberSaveable(id){mutableIntStateOf(existing?.gridColumns?:4)}
+    var gridRows by rememberSaveable(id){mutableIntStateOf(existing?.gridRows?:4)}
+    var imageUri by rememberSaveable(id){mutableStateOf(existing?.imageUri?:"")}
+    var showCoverIcon by rememberSaveable(id){mutableStateOf(existing?.showCoverIcon?:true)}
+    var showCoverName by rememberSaveable(id){mutableStateOf(existing?.showCoverName?:true)}
+    var imageLoading by remember{mutableStateOf(false)}
+    var solidBackground by rememberSaveable(id){mutableStateOf(existing?.solidBackground?:false)}
+    var acquiredImageGrants by rememberSaveable(id){mutableStateOf(arrayListOf<String>())}
+    val context = LocalContext.current
+    DisposableEffect(id) {
+        onDispose {
+            if ((context as? android.app.Activity)?.isChangingConfigurations != true) {
+                FolderImageGrants.cleanup(context, acquiredImageGrants)
+            }
+        }
+    }
+    fun changeImage(value: String) {
+        if (imageUri != value && imageUri in acquiredImageGrants) FolderImageGrants.cleanup(context, listOf(imageUri))
+        imageUri = value
+    }
     var biometricUnlock by rememberSaveable(id){mutableStateOf(existing?.biometricUnlock?:true)}
     var tileHeight by rememberSaveable(id){mutableFloatStateOf(existing?.heightDp?:150f)}
     var color by rememberSaveable(id) { mutableLongStateOf(existing?.color ?: 0L) }
@@ -69,69 +93,80 @@ fun FolderEditor(existing: AppFolder?, apps: List<LaunchableApp>, model: Launche
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 OutlinedTextField(name, { if (it.length <= 40) name = it }, label = { Text(localized("Folder name")) }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth())
-                SectionLabel("Icon")
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    vectorNames.forEach { key ->
-                        TextButton(onClick = { icon = key }, enabled = !saving, modifier = Modifier.width(48.dp).selectionMarker(icon==key).semantics { contentDescription = "$key icon"; selected = icon == key }, contentPadding = PaddingValues(0.dp)) {
-                            VectorSymbol(key,if(icon==key)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.5f))
-                        }
-                    }
-                }
-                SectionLabel("Color")
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    folderColors.forEachIndexed { index, value ->
-                        val swatch = if (value == 0L) MaterialTheme.colorScheme.onSurface else Color(value)
-                        Box(Modifier.size(48.dp).selectionMarker(color==value).semantics { contentDescription = if (index == 0) "Monochrome" else "Folder color $index"; selected = color == value }
-                            .clickable(enabled = !saving) { color = value }, contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(if (color == value) 22.dp else 15.dp).background(swatch, androidx.compose.foundation.shape.CircleShape))
-                            if (color == value) Text(localized("✓"), color = Color.Black, fontSize = 12.sp)
-                        }
-                    }
-                }
-                ChoiceRow("Width cells (0 = global)",widthUnits.toString(),(0..4).map{it.toString()}){widthUnits=it.toInt()}
-                ChoiceRow("Height cells (0 = global)",heightUnits.toString(),(0..4).map{it.toString()}){heightUnits=it.toInt()}
-                ToggleRow("Allow device authentication",biometricUnlock){biometricUnlock=it}
-                ChoiceRow("In-folder layout",layout,listOf("Inherit","Text","Icons","Grid")){layout=it}
-                ToggleRow("Keep custom app order",manualOrder){manualOrder=it}
-                SectionLabel("This folder's size")
-                Text(if(tileWidth==0f)"Width: use the available column" else "Width: ${tileWidth.toInt()} dp",style=MaterialTheme.typography.bodySmall)
-                Slider(if(tileWidth==0f)160f else tileWidth,{tileWidth=it},valueRange=100f..360f,enabled=!saving)
-                Text("Height: ${tileHeight.toInt()} dp",style=MaterialTheme.typography.bodySmall)
-                Slider(tileHeight,{tileHeight=it},valueRange=100f..360f,enabled=!saving)
-                Text(localized("Width fits within this folder's column. Other folders retain their own sizes."),style=MaterialTheme.typography.bodySmall)
-                TextButton(onClick={tileWidth=0f;tileHeight=150f},enabled=!saving){Text(localized("Reset this folder's size"))}
-                ToggleRow("Lock folder",lockFolder){lockFolder=it}
-                if(lockFolder)OutlinedTextField(password, { if (it.length <= 128) password = it }, label = { Text(if (existing?.passwordHash?.isNotEmpty() == true) "New folder password (optional)" else "Folder password (optional)") },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth())
-                if (existing?.passwordHash?.isNotEmpty() == true) ToggleRow("Remove password", removePassword, !saving) { removePassword = it }
-                Text(localized("Use at least 4 characters. This protects this folder in EmmanueLA, not apps opened elsewhere. Passwords cannot be recovered."), style = MaterialTheme.typography.bodySmall)
-                SectionLabel("Apps")
-                selectedApps.mapNotNull{id->apps.find{it.id==id}}.forEach{app->Text(app.label,Modifier.padding(vertical=6.dp))}
-                TextButton(onClick={choosingApps=!choosingApps}){Text(localized(if(choosingApps)"Done" else "+ Add apps"))}
-                if(choosingApps){
-                OutlinedTextField(query, { query = it }, label = { Text(localized("Find apps")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                LazyColumn(Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 220.dp)) {
-                    items(visible, key = { it.id }) { app ->
-                        Row(Modifier.fillMaxWidth().toggleable(app.id in selectedApps, enabled = !saving, role = Role.Checkbox,
-                            onValueChange = { check -> selectedApps = ArrayList(if (check) selectedApps + app.id else selectedApps - app.id) }).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(app.id in selectedApps, null, enabled = !saving)
-                            AppIcon(app, model)
-                            Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                                Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(app.packageName, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SettingsSection("Appearance", if(imageUri.isNotEmpty()) "Photo cover" else "Color and folder icon", initiallyExpanded = true) {
+                    FolderAppearanceEditor(AppFolder(id, name, icon, emptyList(), color = color, imageUri = imageUri, solidBackground = solidBackground, showCoverIcon = showCoverIcon, showCoverName = showCoverName), !saving, folderState.settings.ui.folderFill,
+                        { color = it; solidBackground = it != 0L }, { solidBackground = it }, ::changeImage, { imageLoading = it },
+                        { acquiredImageGrants = ArrayList((acquiredImageGrants + it).distinct()) }, { showCoverIcon = it }, { showCoverName = it })
+                    if(imageUri.isEmpty() || showCoverIcon) {
+                        SectionLabel("Folder icon")
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                            vectorNames.forEach { key ->
+                                TextButton(onClick = { icon = key }, enabled = !saving, modifier = Modifier.width(48.dp).selectionMarker(icon==key).semantics { contentDescription = "$key icon"; selected = icon == key }, contentPadding = PaddingValues(0.dp)) {
+                                    VectorSymbol(key,if(icon==key)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=.5f))
+                                }
                             }
                         }
                     }
                 }
-                if (visible.isEmpty()) Text(localized("No matching apps"))
+                SettingsSection("Apps", "${selectedApps.size} selected", initiallyExpanded = selectedApps.isEmpty()) {
+                    val selectedEntries = selectedApps.mapNotNull{id->apps.find{it.id==id}}
+                    selectedEntries.take(4).forEach{app->Text(app.label,Modifier.padding(vertical=6.dp))}
+                    if(selectedEntries.size>4)Text("${selectedEntries.size-4} more apps",style=MaterialTheme.typography.bodySmall)
+                    TextButton(onClick={choosingApps=!choosingApps}){Text(localized(if(choosingApps)"Done" else "+ Add apps"))}
+                    if(choosingApps){
+                    OutlinedTextField(query, { query = it }, label = { Text(localized("Find apps")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 220.dp)) {
+                        items(visible, key = { it.id }) { app ->
+                            Row(Modifier.fillMaxWidth().toggleable(app.id in selectedApps, enabled = !saving, role = Role.Checkbox,
+                                onValueChange = { check -> selectedApps = ArrayList(if (check) selectedApps + app.id else selectedApps - app.id) }).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(app.id in selectedApps, null, enabled = !saving)
+                                AppIcon(app, model)
+                                Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                                    Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.packageName, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                    if (visible.isEmpty()) Text(localized("No matching apps"))
+                    }
+                    if (selectedApps.any { saved -> apps.none { it.id == saved } }) TextButton(enabled = !saving, onClick = { selectedApps = ArrayList(selectedApps.filter { saved -> apps.any { it.id == saved } }) }) { Text(localized("Remove unavailable apps")) }
                 }
-                if (selectedApps.any { saved -> apps.none { it.id == saved } }) TextButton(enabled = !saving, onClick = { selectedApps = ArrayList(selectedApps.filter { saved -> apps.any { it.id == saved } }) }) { Text(localized("Remove unavailable apps")) }
+                SettingsSection("Layout & size", if(layout=="Grid") "${gridColumns} × ${gridRows} app grid" else "${layout} app layout") {
+                    ChoiceRow("In-folder layout",layout,listOf("Inherit","Text","Icons","Grid")){layout=it}
+                    ToggleRow("Keep custom app order",manualOrder,!saving){manualOrder=it}
+                    if(layout=="Grid") {
+                        ChoiceRow("Columns",gridColumns.toString(),(1..8).map{it.toString()}){gridColumns=it.toInt()}
+                        ChoiceRow("Rows",gridRows.toString(),(1..8).map{it.toString()}){gridRows=it.toInt()}
+                        Text("Columns adapt to this screen. Extra apps scroll; manual ordering is preserved.",style=MaterialTheme.typography.bodySmall)
+                    }
+                    if(folderState.settings.ui.folderLayout in listOf("Freeform","Canvas")) {
+                        ChoiceRow("Canvas width cells (0 = global)",widthUnits.toString(),(0..8).map{it.toString()}){widthUnits=it.toInt()}
+                        ChoiceRow("Canvas height cells (0 = global)",heightUnits.toString(),(0..8).map{it.toString()}){heightUnits=it.toInt()}
+                    } else {
+                        Text(if(tileWidth==0f)"Width: fit column" else "Width: ${tileWidth.toInt()} dp",style=MaterialTheme.typography.bodySmall)
+                        Slider(if(tileWidth==0f)160f else tileWidth,{tileWidth=it},valueRange=100f..360f,enabled=!saving)
+                        Text("Height: ${tileHeight.toInt()} dp",style=MaterialTheme.typography.bodySmall)
+                        Slider(tileHeight,{tileHeight=it},valueRange=100f..360f,enabled=!saving)
+                        TextButton(onClick={tileWidth=0f;tileHeight=150f},enabled=!saving){Text(localized("Reset this folder's size"))}
+                    }
+                }
+                SettingsSection("Privacy", if(lockFolder)"Locked folder" else "No folder lock", initiallyExpanded = existing?.isProtected==true) {
+                    ToggleRow("Lock folder",lockFolder,!saving){lockFolder=it}
+                    if(lockFolder) {
+                        ToggleRow("Allow device authentication",biometricUnlock,!saving){biometricUnlock=it}
+                        OutlinedTextField(password, { if (it.length <= 128) password = it }, label = { Text(if (existing?.passwordHash?.isNotEmpty() == true) "New folder password (optional)" else "Folder password (optional)") },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth())
+                        if (existing?.passwordHash?.isNotEmpty() == true) ToggleRow("Remove password", removePassword, !saving) { removePassword = it }
+                        Text(localized("Use at least 4 characters. This protects this folder in EmmanueLA, not apps opened elsewhere. Passwords cannot be recovered."), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (existing != null) TextButton(onClick = { deleteConfirm = true }, enabled = !saving) { Text(localized("Delete folder")) }
             }
-        }, confirmButton = { TextButton(enabled = name.isNotBlank() && !saving && (!lockFolder || password.length >= 4 || (password.isEmpty()&&(biometricUnlock||existing?.passwordHash?.isNotEmpty()==true))), onClick = {
+        }, confirmButton = { TextButton(enabled = name.isNotBlank() && !saving && !imageLoading && (!lockFolder || password.length >= 4 || (password.isEmpty()&&(biometricUnlock||existing?.passwordHash?.isNotEmpty()==true))), onClick = {
             saving = true
-            scope.launch { val ok = model.saveFolder(AppFolder(id, name.trim(), icon, selectedApps.distinct(), color, existing?.passwordSalt ?: "", existing?.passwordHash ?: "", existing?.gridCell,layout,tileWidth,tileHeight,manualOrder,widthUnits,heightUnits,biometricUnlock,lockFolder&&password.isEmpty()&&existing?.passwordHash.isNullOrEmpty()), if(lockFolder)password else "", removePassword||!lockFolder); saving = false
+            scope.launch { val ok = model.saveFolder(AppFolder(id, name.trim(), icon, selectedApps.distinct(), color, existing?.passwordSalt ?: "", existing?.passwordHash ?: "", existing?.gridCell,layout,tileWidth,tileHeight,manualOrder,widthUnits,heightUnits,biometricUnlock,lockFolder&&password.isEmpty()&&existing?.passwordHash.isNullOrEmpty(), imageUri, gridColumns, gridRows, solidBackground, showCoverIcon, showCoverName), if(lockFolder)password else "", removePassword||!lockFolder); saving = false
                 if (ok) dismiss() else failure = "Save failed. Try again." }
         }) { Text(if (saving) "Saving…" else "Save") } },
         dismissButton = { TextButton(onClick = dismiss, enabled = !saving) { Text(localized("Cancel")) } })

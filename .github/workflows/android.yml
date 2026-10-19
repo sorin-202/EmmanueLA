@@ -67,6 +67,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Compile test APKs before starting Android
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --max-workers=2
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -81,11 +84,11 @@ jobs:
           target: default
           profile: pixel_2
           disable-animations: false
-          script: chmod +x gradlew && ./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2
+          script: bash .github/scripts/run-ui-regressions.sh
 
-      - name: External browser fixture limitation
+      - name: Browser fixture coverage
         if: always()
-        run: echo 'Firefox157 is not installed by CI. Its optional integration test is skipped; this job does not certify browser support. See docs/BROWSER_COMPATIBILITY.md.' >> "$GITHUB_STEP_SUMMARY"
+        run: echo 'This general regression job has no Firefox fixture; its browser case is covered separately by the browser-tests job. See docs/BROWSER_COMPATIBILITY.md.' >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -95,10 +98,63 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
 
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify browser fixture recovery guards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v
+
+      - name: Compile test APKs before starting Android
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --max-workers=2
+
+      - name: Download pinned official Firefox fixture
+        run: |
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/firefox.apk" https://archive.mozilla.org/pub/fenix/releases/157.0.1/android/fenix-157.0.1-android-x86_64/fenix-157.0.1.multi.android-x86_64.apk
+          printf '%s  %s\n' a6f397305508603cb0548dca8c321c412bc6eda7765f417fd142f61c9918e29c "$RUNNER_TEMP/firefox.apk" | sha256sum --check
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Real Firefox address and blocking overlay
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          profile: pixel_2
+          disable-animations: false
+          script: |
+            adb install "$RUNNER_TEMP/firefox.apk"
+            python3 .github/scripts/prepare-firefox-fixture.py --adb "$ANDROID_HOME/platform-tools/adb" --serial emulator-5554 --artifacts "$RUNNER_TEMP/firefox-preflight"
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.emmanuela.launcher.BrowserDiagnosticsTest || { browser_test_status=$?; adb exec-out screencap -p > "$RUNNER_TEMP/firefox-preflight/instrumentation-failure.png" || true; exit "$browser_test_status"; }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firefox-browser-test-reports
+          path: |
+            ${{ runner.temp }}/firefox-preflight/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+
   beta-apk:
-    # Sign only trusted main builds, after both unchanged validation jobs pass.
+    # Sign only trusted main builds, after all validation jobs pass.
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [build, android-tests]
+    needs: [build, android-tests, browser-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

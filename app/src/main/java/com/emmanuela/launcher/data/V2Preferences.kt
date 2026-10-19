@@ -10,6 +10,7 @@ data class V2Preferences(
     val foldersEnabled: Boolean = true, val searchEnabled: Boolean = true,
     val shortcutMode: String = "Text", val leftVector: String = "apps", val rightVector: String = "settings",
     val widgetGrid: Int = 16, val widgetPositions: Map<String, WidgetPlacement> = emptyMap(),
+    val homeShortcuts: List<HomeShortcut> = emptyList(),
     val treeBranch:Boolean=false, val backgroundRules:Boolean=false,
     val clockSeconds:Boolean=false,val clockAmPm:Boolean=false,val clockFormat:String="Digital",
     val folderWidthUnits:Int=2,val folderHeightUnits:Int=2,
@@ -28,6 +29,7 @@ object V2Codec {
         put("gesturesEnabled",p.gesturesEnabled);put("holdAction",p.holdAction);put("foldersEnabled",p.foldersEnabled);put("searchEnabled",p.searchEnabled)
         put("shortcutMode",p.shortcutMode);put("leftVector",p.leftVector);put("rightVector",p.rightVector);put("widgetGrid",p.widgetGrid)
         put("widgetPositions",JSONObject().apply { p.widgetPositions.forEach { (key,v) -> put(key,JSONObject().put("x",v.x.toDouble()).put("y",v.y.toDouble())) } })
+        put("homeShortcuts",HomeShortcutCodec.encode(p.homeShortcuts))
         put("locationAction",p.locationAction);put("locationWidgetEnabled",p.locationWidgetEnabled); put("weatherEnabled",p.weatherEnabled);put("latitude",p.latitude);put("longitude",p.longitude);put("weatherAction",p.weatherAction)
         put("wallpaperAlbum",p.wallpaperAlbum);put("wallpaperSwitchMinute",p.wallpaperSwitchMinute)
         put("cropX",p.cropX.toDouble());put("cropY",p.cropY.toDouble());put("cropZoom",p.cropZoom.toDouble())
@@ -52,6 +54,7 @@ object V2Codec {
             gesturesEnabled=o.optBoolean("gesturesEnabled",true),holdAction=action("holdAction","settings"),foldersEnabled=o.optBoolean("foldersEnabled",true),searchEnabled=o.optBoolean("searchEnabled",true),
             shortcutMode=o.optString("shortcutMode","Text").also{require(it in listOf("Text","Icon"))},leftVector=o.optString("leftVector","apps"),rightVector=o.optString("rightVector","settings"),
             widgetGrid=o.optInt("widgetGrid",16).also{require(it in 4..48)},widgetPositions=map,
+            homeShortcuts=HomeShortcutCodec.decode(o.optJSONArray("homeShortcuts")?:JSONArray()),
             locationAction=action("locationAction","none"),locationWidgetEnabled=o.optBoolean("locationWidgetEnabled"), weatherEnabled=o.optBoolean("weatherEnabled"),latitude=o.optString("latitude").also{require(it.isEmpty() || it.toDoubleOrNull()?.let{n->n in -90.0..90.0}==true)},
             longitude=o.optString("longitude").also{require(it.isEmpty() || it.toDoubleOrNull()?.let{n->n in -180.0..180.0}==true)},weatherAction=action("weatherAction","none"),
             wallpaperAlbum=o.optString("wallpaperAlbum").also{require(it.isEmpty()||it.startsWith("content://"))},wallpaperSwitchMinute=o.optInt("wallpaperSwitchMinute").also{require(it in 0..1439)},
